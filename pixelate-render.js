@@ -1,8 +1,7 @@
 function initPixelateImageRenderEffect() {
-  
-  let renderDuration = 150;  // Duration per step (in ms)
-  let renderSteps = 12;       // Number of steps from chunky to sharp
-  let renderColumns = 12;    // Starting number of columns at the most pixelated stage
+  let renderDuration = 150;   // ms per step
+  let renderSteps = 12;       // numero di step (da chunky a sharp)
+  let renderColumns = 12;     // colonne di partenza (più basso = più “grossi” i pixel)
 
   document.querySelectorAll('[data-pixelate-render]').forEach(setupPixelate);
 
@@ -10,32 +9,29 @@ function initPixelateImageRenderEffect() {
     const img = root.querySelector('[data-pixelate-render-img]');
     if (!img) return;
 
-    const trigger = (root.getAttribute('data-pixelate-render-trigger') || 'load').toLowerCase();
-
-    // Per-element overrides
-    const durAttr = parseInt(root.getAttribute('data-pixelate-render-duration'), 10);
-    const stepsAttr = parseInt(root.getAttribute('data-pixelate-render-steps'), 10);
-    const colsAttr = parseInt(root.getAttribute('data-pixelate-render-columns'), 10);
-
+    // Solo INVIEW (forzato)
     const fitMode = (root.getAttribute('data-pixelate-render-fit') || 'cover').toLowerCase();
 
-    const elRenderDuration = Number.isFinite(durAttr) ? Math.max(16, durAttr) : renderDuration;
-    const elRenderSteps = Number.isFinite(stepsAttr) ? Math.max(1, stepsAttr) : renderSteps;
-    const elRenderColumns = Number.isFinite(colsAttr) ? Math.max(1, colsAttr) : renderColumns;
+    // Override per-element
+    const durAttr  = parseInt(root.getAttribute('data-pixelate-render-duration'), 10);
+    const stepsAttr= parseInt(root.getAttribute('data-pixelate-render-steps'), 10);
+    const colsAttr = parseInt(root.getAttribute('data-pixelate-render-columns'), 10);
 
+    const elRenderDuration = Number.isFinite(durAttr)  ? Math.max(16, durAttr)   : renderDuration;
+    const elRenderSteps    = Number.isFinite(stepsAttr)? Math.max(1, stepsAttr)  : renderSteps;
+    const elRenderColumns  = Number.isFinite(colsAttr) ? Math.max(1, colsAttr)   : renderColumns;
+
+    // Canvas overlay
     const canvas = document.createElement('canvas');
     canvas.setAttribute('data-pixelate-canvas', '');
-    canvas.style.position = 'absolute';
-    canvas.style.inset = '0';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
-    canvas.style.pointerEvents = 'none';
+    Object.assign(canvas.style, { position:'absolute', inset:'0', width:'100%', height:'100%', pointerEvents:'none', opacity:'0' });
     root.style.position ||= 'relative';
     root.appendChild(canvas);
 
     const ctx = canvas.getContext('2d', { alpha: true });
     ctx.imageSmoothingEnabled = false;
 
+    // Offscreen buffers
     const back = document.createElement('canvas');
     const tiny = document.createElement('canvas');
     const bctx = back.getContext('2d', { alpha: true });
@@ -63,12 +59,10 @@ function initPixelateImageRenderEffect() {
       const cw = Math.max(1, canvas.width);
       const startCols = Math.min(elRenderColumns, cw);
       const total = Math.max(1, elRenderSteps);
-      const use = Math.max(1, Math.floor(total * 0.9)); // hard-coded 80%
+      const use = Math.max(1, Math.floor(total * 0.9)); // usa ~90% degli step richiesti
       const a = [];
       const ratio = Math.pow(cw / startCols, 1 / total);
-      for (let i = 0; i < use; i++) {
-        a.push(Math.max(1, Math.round(startCols * Math.pow(ratio, i))));
-      }
+      for (let i = 0; i < use; i++) a.push(Math.max(1, Math.round(startCols * Math.pow(ratio, i))));
       for (let i = 1; i < a.length; i++) if (a[i] <= a[i - 1]) a[i] = a[i - 1] + 1;
       steps = a.length ? a : [startCols];
     }
@@ -155,35 +149,26 @@ function initPixelateImageRenderEffect() {
       fitCanvas();
       if (!playing) draw(steps[Math.min(stageIndex, steps.length - 1)] || steps[0]);
     }
-
     function onWindowResize() {
       clearTimeout(resizeTimeout);
       resizeTimeout = setTimeout(onResize, 250);
     }
 
-    if (trigger === 'load') {
-      prime();
-      start();
-    } else if (trigger === 'inview') {
-      prime();
-      const io = new IntersectionObserver(es => {
-        for (const e of es) if (e.isIntersecting) { start(); io.disconnect(); break; }
-      }, { rootMargin: '0px 0px -25% 0px', threshold: 0.25 });
-      io.observe(root);
-      window.addEventListener('resize', onWindowResize);
-    } else if (trigger === 'hover') {
-      prime();
-      root.addEventListener('mouseenter', start, { once: true });
-      window.addEventListener('resize', onWindowResize);
-    } else if (trigger === 'click') {
-      prime();
-      root.addEventListener('click', start, { once: true });
-      window.addEventListener('resize', onWindowResize);
-    }
+    // —— SOLO INVIEW @ 8% ——
+    prime();
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) {
+          start();
+          io.disconnect(); // one-shot
+          break;
+        }
+      }
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+
+    io.observe(root);
+    window.addEventListener('resize', onWindowResize);
   }
 }
 
-// Initialize Pixelate Image Render Effect
-document.addEventListener('DOMContentLoaded', () => {
-  initPixelateImageRenderEffect();
-});
+document.addEventListener('DOMContentLoaded', initPixelateImageRenderEffect);
