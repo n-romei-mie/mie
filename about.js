@@ -1,65 +1,91 @@
 /**
- * WEBFLOW + VIEW TRANSITION API + GSAP CUSTOM SCRIPTS
+ * WEBFLOW + VIEW TRANSITION API + GSAP
+ * Versione Definitiva: Risolve blocchi scroll e duplicazione elementi
  */
 
-// Registrazione Plugin
-gsap.registerPlugin(ScrollTrigger, Flip);
+// Registrazione Plugin GSAP
+if (typeof gsap !== "undefined") {
+    gsap.registerPlugin(ScrollTrigger, Flip);
+}
 
 // --- 1. ANIMAZIONI INGRESSO (data-transition) ---
 function initializeAnimations(isTransition = false) {
     const dynamicDelay = isTransition ? 1.1 : 0.2;
     const linkDelay = isTransition ? 1.2 : 0.4;
 
+    // Link Navigazione
     const links = document.querySelectorAll(".link a");
     if (links.length > 0) {
         gsap.set(links, { y: "100%" });
         gsap.to(links, { y: "0%", duration: 1, stagger: 0.1, ease: "power4.out", delay: linkDelay });
     }
 
+    // Elementi con attributo data-transition
     const elementsToAnimate = document.querySelectorAll('[data-transition]');
     elementsToAnimate.forEach(el => {
+        // Evita di processare due volte lo stesso elemento (bug linee sottili)
+        if (el.classList.contains('split-done')) return;
+
         const split = new SplitType(el, { types: 'lines', lineClass: 'line-inner' });
         split.lines.forEach(line => {
-            if (!line.parentElement.classList.contains('line-wrapper')) {
-                const wrapper = document.createElement('div');
-                wrapper.classList.add('line-wrapper');
-                line.parentNode.insertBefore(wrapper, line);
-                wrapper.appendChild(line);
-                wrapper.style.overflow = 'hidden';
-                wrapper.style.display = 'block';
-                line.style.display = 'block';
-            }
+            const wrapper = document.createElement('div');
+            wrapper.classList.add('line-wrapper');
+            line.parentNode.insertBefore(wrapper, line);
+            wrapper.appendChild(line);
+            
+            // Stili necessari per il funzionamento della maschera
+            wrapper.style.overflow = 'hidden';
+            wrapper.style.display = 'block';
+            line.style.display = 'block';
         });
+
         const spans = el.querySelectorAll(".line-inner");
         gsap.set(spans, { y: "110%" });
-        el.classList.add('is-ready');
-        gsap.to(spans, { y: "0%", duration: 1.2, stagger: 0.08, ease: "power3.out", delay: dynamicDelay });
+        
+        // Rendiamo visibile l'elemento solo ora (gestito con opacity 0 nel CSS)
+        el.classList.add('split-done');
+        el.style.opacity = "1";
+
+        gsap.to(spans, {
+            y: "0%",
+            duration: 1.2,
+            stagger: 0.08,
+            ease: "power3.out",
+            delay: dynamicDelay
+        });
     });
 }
 
 // --- 2. MWG EFFECT 029 (SCROLL WORDS) ---
 function initMwgEffect029() {
     const paragraph = document.querySelector(".mwg_effect029 .is--title-w");
-    if (!paragraph) return;
+    if (!paragraph || paragraph.dataset.processed === "true") return;
+
+    paragraph.dataset.processed = "true";
+    const text = paragraph.textContent;
+    paragraph.innerHTML = text.split(" ").map(w => `<span>${w}</span>`).join(" ");
     
-    paragraph.innerHTML = paragraph.textContent.split(" ").map(w => `<span>${w}</span>`).join(" ");
     const words = paragraph.querySelectorAll("span");
     words.forEach(w => w.classList.add("word" + Math.floor(Math.random() * 4)));
 
     const configs = [{c:".word1", x:"-0.8em"}, {c:".word2", x:"1.6em"}, {c:".word3", x:"-2.4em"}];
     configs.forEach(conf => {
         document.querySelectorAll(`.mwg_effect029 ${conf.c}`).forEach(el => {
-            gsap.to(el, { x: conf.x, ease: "none", scrollTrigger: { trigger: el, start: "top 80%", end: "bottom 60%", scrub: 0.2 }});
+            gsap.to(el, {
+                x: conf.x,
+                ease: "none",
+                scrollTrigger: { trigger: el, start: "top 90%", end: "bottom 10%", scrub: 0.2 }
+            });
         });
     });
 }
 
 // --- 3. LOGO WALL CYCLE ---
 function initLogoWallCycle() {
-    const duration = 0.9;
-    const loopDelay = 1.5;
-
     document.querySelectorAll("[data-logo-wall-cycle-init]").forEach((root) => {
+        if (root.dataset.initialized === "true") return;
+        root.dataset.initialized = "true";
+
         const list = root.querySelector("[data-logo-wall-list]");
         const items = Array.from(list?.querySelectorAll("[data-logo-wall-item]") || []);
         if (!items.length) return;
@@ -81,7 +107,7 @@ function initLogoWallCycle() {
                 parent.appendChild(pool.shift());
             }
 
-            tl = gsap.timeline({ repeat: -1, repeatDelay: loopDelay });
+            tl = gsap.timeline({ repeat: -1, repeatDelay: 1.5 });
             tl.call(() => {
                 const idx = pattern[patternIndex % visibleCount];
                 patternIndex++;
@@ -93,17 +119,13 @@ function initLogoWallCycle() {
 
                 gsap.set(incoming, { yPercent: 50, autoAlpha: 0 });
                 parent.appendChild(incoming);
-                gsap.to(current, { yPercent: -50, autoAlpha: 0, duration, ease: "expo.inOut", onComplete: () => { current.remove(); pool.push(current); }});
-                gsap.to(incoming, { yPercent: 0, autoAlpha: 1, duration, delay: 0.1, ease: "expo.inOut" });
+                gsap.to(current, { yPercent: -50, autoAlpha: 0, duration: 0.9, ease: "expo.inOut", onComplete: () => { current.remove(); pool.push(current); }});
+                gsap.to(incoming, { yPercent: 0, autoAlpha: 1, duration: 0.9, delay: 0.1, ease: "expo.inOut" });
             });
         };
 
         setup();
-        ScrollTrigger.create({
-            trigger: root,
-            onEnter: () => tl.play(),
-            onLeave: () => tl.pause()
-        });
+        ScrollTrigger.create({ trigger: root, onEnter: () => tl.play(), onLeave: () => tl.pause() });
     });
 }
 
@@ -153,21 +175,39 @@ if (window.navigation) {
 
 // --- 6. FINALIZE & RESET ---
 function finalizePage(isTransition = false) {
+    // 1. Reset Posizione Scroll e Lenis
     window.scrollTo(0, 0);
+    if (window.lenis) {
+        window.lenis.scrollTo(0, { immediate: true });
+        window.lenis.resize();
+    }
+
+    // 2. Pulizia Totale GSAP e ScrollTrigger
     ScrollTrigger.getAll().forEach(t => t.kill());
     gsap.killTweensOf("*");
 
+    // 3. Reset Motore Webflow
     if (window.Webflow) {
         window.Webflow.destroy();
         window.Webflow.ready();
         window.Webflow.require('ix2').init();
     }
 
+    // 4. Re-Inizializzazione Script Custom
     initMwgEffect029();
     initLogoWallCycle();
     initAboutGridFlip();
+    
+    // 5. Inizializzazione Animazioni Ingresso
     initializeAnimations(isTransition);
+
+    // 6. Refresh Finale ScrollTrigger (Risolve bug dello scroll bloccato)
+    setTimeout(() => {
+        ScrollTrigger.refresh();
+    }, 200);
 }
 
-// Init iniziale
-window.addEventListener("DOMContentLoaded", () => finalizePage(false));
+// Avvio Iniziale
+window.addEventListener("DOMContentLoaded", () => {
+    finalizePage(false);
+});
