@@ -1,9 +1,7 @@
 /**
- * WEBFLOW + VIEW TRANSITION API + GSAP
- * Versione Omnicomprensiva: Animazioni, Filtri, Team e Layout Toggle
+ * WEBFLOW ULTIMATE ENGINE - FIXED WORDS EFFECT
  */
 
-// Registrazione Plugin GSAP
 if (typeof gsap !== "undefined") {
     gsap.registerPlugin(ScrollTrigger, Flip);
 }
@@ -22,7 +20,6 @@ function initializeAnimations(isTransition = false) {
     const elementsToAnimate = document.querySelectorAll('[data-transition]');
     elementsToAnimate.forEach(el => {
         if (el.classList.contains('split-done')) return;
-
         const split = new SplitType(el, { types: 'lines', lineClass: 'line-inner' });
         split.lines.forEach(line => {
             const wrapper = document.createElement('div');
@@ -33,194 +30,208 @@ function initializeAnimations(isTransition = false) {
             wrapper.style.display = 'block';
             line.style.display = 'block';
         });
-
         const spans = el.querySelectorAll(".line-inner");
         gsap.set(spans, { y: "110%" });
         el.classList.add('split-done');
         el.style.opacity = "1";
-
         gsap.to(spans, { y: "0%", duration: 1.2, stagger: 0.08, ease: "power3.out", delay: dynamicDelay });
     });
 }
 
-// --- 2. CONTEGGIO PROGETTI ---
-function initCategoryCount() {
-    const categories = document.querySelectorAll('[data-category-id]');
-    const projects = document.querySelectorAll('[data-project-category]');
-    if (!categories.length) return;
+// --- 2. MWG EFFECT 029 (SCROLL WORDS) - FIXED ---
+function initMwgEffect029() {
+    const paragraph = document.querySelector(".mwg_effect029 .is--title-w");
+    if (!paragraph || paragraph.dataset.processed === "true") return;
+    paragraph.dataset.processed = "true";
 
-    categories.forEach(category => {
-        const catID = category.getAttribute('data-category-id');
-        const countEl = category.querySelector('[data-category-count]');
-        if (!countEl) return;
-        const count = [...projects].filter(proj => proj.getAttribute('data-project-category') === catID).length;
-        countEl.textContent = count;
+    // Split manuale mantenendo gli spazi e assegnando le classi
+    const wordsArray = paragraph.textContent.trim().split(/\s+/);
+    paragraph.innerHTML = wordsArray
+        .map(word => {
+            const randomClass = "word" + (Math.floor(Math.random() * 3) + 1); // Genera word1, word2 o word3
+            return `<span class="${randomClass}" style="display: inline-block; white-space: pre;">${word} </span>`;
+        })
+        .join("");
+
+    const configs = [
+        { sel: ".word1", x: "-0.8em" },
+        { sel: ".word2", x: "1.6em" },
+        { sel: ".word3", x: "-2.4em" }
+    ];
+
+    configs.forEach(conf => {
+        const targets = paragraph.querySelectorAll(conf.sel);
+        if (targets.length > 0) {
+            gsap.to(targets, {
+                x: conf.x,
+                ease: "none",
+                scrollTrigger: {
+                    trigger: paragraph,
+                    start: "top 90%",
+                    end: "bottom 10%",
+                    scrub: 0.2
+                }
+            });
+        }
     });
 }
 
-// --- 3. TOGGLE VISTA GRIGLIA ---
+// --- 3. LOGO WALL CYCLE ---
+function initLogoWallCycle() {
+    document.querySelectorAll("[data-logo-wall-cycle-init]").forEach((root) => {
+        if (root.dataset.initialized === "true") return;
+        root.dataset.initialized = "true";
+        const list = root.querySelector("[data-logo-wall-list]");
+        const items = Array.from(list?.querySelectorAll("[data-logo-wall-item]") || []);
+        if (!items.length) return;
+        const original = items.map(i => i.querySelector("[data-logo-wall-target]")).filter(Boolean);
+        let tl, pool = [], visible = [];
+        const setup = () => {
+            if (tl) tl.kill();
+            visible = items.filter(el => window.getComputedStyle(el).display !== "none");
+            pool = original.map(n => n.cloneNode(true)).sort(() => Math.random() - 0.5);
+            visible.forEach(v => { v.innerHTML = ''; v.appendChild(pool.shift()); });
+            tl = gsap.timeline({ repeat: -1, repeatDelay: 1.5 });
+            tl.call(() => {
+                const idx = Math.floor(Math.random() * visible.length);
+                const parent = visible[idx];
+                const current = parent.querySelector("[data-logo-wall-target]");
+                const incoming = pool.shift();
+                if (!incoming || !current) return;
+                gsap.set(incoming, { yPercent: 50, autoAlpha: 0 });
+                parent.appendChild(incoming);
+                gsap.to(current, { yPercent: -50, autoAlpha: 0, duration: 0.9, onComplete: () => { current.remove(); pool.push(current); }});
+                gsap.to(incoming, { yPercent: 0, autoAlpha: 1, duration: 0.9 });
+            });
+        };
+        setup();
+        ScrollTrigger.create({ trigger: root, onEnter: () => tl.play(), onLeave: () => tl.pause() });
+    });
+}
+
+// --- 4. ABOUT GRID FLIP ---
+function initAboutGridFlip() {
+    const grid = document.querySelector(".about__grid-wrap");
+    const items = grid?.querySelectorAll(".ag__img");
+    const btnBig = document.querySelector(".ag__trigger.is--big");
+    const btnSmall = document.querySelector(".ag__trigger.is--small");
+    if (!grid || !items?.length) return;
+
+    const updateButtons = (isBig) => {
+        if (btnBig) gsap.to(btnBig, { opacity: isBig ? 1 : 0.5, pointerEvents: isBig ? "none" : "auto" });
+        if (btnSmall) gsap.to(btnSmall, { opacity: isBig ? 0.5 : 1, pointerEvents: isBig ? "auto" : "none" });
+    };
+
+    const switchLayout = (toBig) => {
+        const state = Flip.getState(items);
+        toBig ? (grid.classList.add("is--big"), grid.classList.remove("is--small")) : (grid.classList.add("is--small"), grid.classList.remove("is--big"));
+        updateButtons(toBig);
+        Flip.from(state, { duration: 1.3, ease: "power4.inOut", scale: true, onComplete: () => ScrollTrigger.refresh() });
+    };
+    if (btnBig) btnBig.onclick = () => switchLayout(true);
+    if (btnSmall) btnSmall.onclick = () => switchLayout(false);
+    updateButtons(grid.classList.contains("is--big"));
+}
+
+// --- 5. ALTRI MODULI (Team, Count, Toggle, Filter, Hover) ---
+function initCategoryCount() {
+    const categories = document.querySelectorAll('[data-category-id]');
+    const projects = document.querySelectorAll('[data-project-category]');
+    categories.forEach(category => {
+        const catID = category.getAttribute('data-category-id');
+        const countEl = category.querySelector('[data-category-count]');
+        if (countEl) countEl.textContent = [...projects].filter(proj => proj.getAttribute('data-project-category') === catID).length;
+    });
+}
+
 function initGridToggle() {
     const triggers = document.querySelectorAll('.tt__left, .tt__right');
     const contents = document.querySelectorAll('.ps__list-wrap, .ll__wrap');
-
     triggers.forEach(trigger => {
         trigger.onclick = function() {
             const gridId = this.getAttribute('data-grid');
             triggers.forEach(t => t.classList.remove('active'));
             contents.forEach(c => c.classList.remove('active'));
             this.classList.add('active');
-            contents.forEach(content => {
-                if (content.getAttribute('data-grid') === gridId) content.classList.add('active');
-            });
-            // Rinfresca ScrollTrigger dopo il cambio layout
+            contents.forEach(content => { if (content.getAttribute('data-grid') === gridId) content.classList.add('active'); });
             ScrollTrigger.refresh();
         };
     });
 }
 
-// --- 4. MULTI-FILTER SETUP ---
 function initMutliFilterSetupMultiMatch() {
     const groups = [...document.querySelectorAll('[data-filter-group]')];
-    if (!groups.length) return;
-
     groups.forEach(group => {
-        const targetMatch = (group.getAttribute('data-filter-target-match') || 'multi').trim().toLowerCase();
-        const nameMatch = (group.getAttribute('data-filter-name-match') || 'multi').trim().toLowerCase();
         const buttons = [...group.querySelectorAll('[data-filter-target]')];
         const items = [...group.querySelectorAll('[data-filter-name]')];
-
-        const itemTokens = new Map();
-        items.forEach(el => {
-            const raw = (el.getAttribute('data-filter-name') || '').trim().toLowerCase();
-            const tokens = raw ? raw.split(/\s+/).filter(Boolean) : [];
-            itemTokens.set(el, new Set(tokens));
-            if (!el.hasAttribute('data-filter-status')) el.setAttribute('data-filter-status', 'active');
-        });
-
-        let activeTags = targetMatch === 'single' ? null : new Set(['all']);
-
-        const paint = (rawTarget, isResize = false) => {
-            if (!isResize) {
-                const target = (rawTarget || '').trim().toLowerCase();
-                if (target === 'all' || target === 'reset') {
-                    if (targetMatch === 'single') activeTags = null; else { activeTags.clear(); activeTags.add('all'); }
-                } else if (targetMatch === 'single') {
-                    activeTags = target;
-                } else {
-                    if (activeTags.has('all')) activeTags.delete('all');
-                    activeTags.has(target) ? activeTags.delete(target) : activeTags.add(target);
-                    if (activeTags.size === 0) { activeTags.clear(); activeTags.add('all'); }
-                }
+        let activeTags = new Set(['all']);
+        const paint = (target, isResize = false) => {
+            if (!isResize && target) {
+                target = target.toLowerCase();
+                if (target === 'all') { activeTags.clear(); activeTags.add('all'); }
+                else { activeTags.delete('all'); activeTags.has(target) ? activeTags.delete(target) : activeTags.add(target); if (!activeTags.size) activeTags.add('all'); }
             }
-
-            const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
-            let visibleCounter = 0;
-
             items.forEach(el => {
-                const tokens = itemTokens.get(el);
-                let shouldShow = true;
-                if (activeTags !== null && !(activeTags instanceof Set && activeTags.has('all'))) {
-                    const selected = targetMatch === 'single' ? [activeTags] : [...activeTags];
-                    shouldShow = nameMatch === 'single' ? selected.every(tag => tokens.has(tag)) : selected.some(tag => tokens.has(tag));
-                }
-
-                if (shouldShow) {
-                    visibleCounter++;
-                    if (isDesktop) el.setAttribute('data-grid-pos', ((visibleCounter - 1) % 9) + 1);
-                    else el.removeAttribute('data-grid-pos');
-                    el.setAttribute('data-filter-status', 'active');
-                } else {
-                    el.removeAttribute('data-grid-pos');
-                    el.setAttribute('data-filter-status', 'not-active');
-                }
+                const show = activeTags.has('all') || [...activeTags].some(t => el.getAttribute('data-filter-name').toLowerCase().includes(t));
+                el.setAttribute('data-filter-status', show ? 'active' : 'not-active');
             });
-
-            if (!isResize) {
-                buttons.forEach(btn => {
-                    const t = (btn.getAttribute('data-filter-target') || '').trim().toLowerCase();
-                    let on = (t === 'all') ? (activeTags === null || (activeTags instanceof Set && activeTags.has('all'))) : 
-                             (targetMatch === 'single' ? activeTags === t : activeTags.has(t));
-                    btn.setAttribute('data-filter-status', on ? 'active' : 'not-active');
-                });
-            }
+            buttons.forEach(btn => {
+                const t = btn.getAttribute('data-filter-target').toLowerCase();
+                btn.setAttribute('data-filter-status', (t === 'all' ? activeTags.has('all') : activeTags.has(t)) ? 'active' : 'not-active');
+            });
         };
-
-        group.onclick = e => {
-            const btn = e.target.closest('[data-filter-target]');
-            if (btn) paint(btn.getAttribute('data-filter-target'));
-        };
-
-        window.addEventListener('resize', () => paint(null, true));
+        group.onclick = e => { const btn = e.target.closest('[data-filter-target]'); if (btn) paint(btn.getAttribute('data-filter-target')); };
         paint('all');
     });
 }
 
-// --- 5. PS ITEM HOVER ANIMATION ---
 function initPsItemHover() {
-    const psItems = document.querySelectorAll(".ps__item");
-    psItems.forEach((item) => {
+    document.querySelectorAll(".ps__item").forEach((item) => {
         const imgWrap = item.querySelector(".ps__item-img");
         const cta = item.querySelector(".projects__cta");
-        const splitTargets = item.querySelectorAll("[data-split-ps]");
-        if (!imgWrap || !splitTargets.length) return;
-
+        const targets = item.querySelectorAll("[data-split-ps]");
+        if (!imgWrap || !targets.length) return;
         const allLines = [];
-        splitTargets.forEach((el) => {
+        targets.forEach(el => {
             const split = new SplitType(el, { types: "lines", lineClass: "split-line" });
             gsap.set(split.lines, { yPercent: 100 });
             allLines.push(...split.lines);
         });
-
-        if (cta) gsap.set(cta, { autoAlpha: 0 });
-        const hoverTl = gsap.timeline({ paused: true });
-        hoverTl.to(allLines, { yPercent: 0, duration: 0.6, ease: "expo.out", stagger: 0.03 }, 0);
-        if (cta) hoverTl.to(cta, { autoAlpha: 1, duration: 0.4 }, 0);
-
-        imgWrap.onmouseenter = () => hoverTl.play();
-        imgWrap.onmouseleave = () => hoverTl.reverse();
+        const tl = gsap.timeline({ paused: true });
+        tl.to(allLines, { yPercent: 0, duration: 0.6, ease: "expo.out", stagger: 0.03 }, 0);
+        if (cta) { gsap.set(cta, { autoAlpha: 0 }); tl.to(cta, { autoAlpha: 1, duration: 0.4 }, 0); }
+        imgWrap.onmouseenter = () => tl.play();
+        imgWrap.onmouseleave = () => tl.reverse();
     });
 }
 
-// --- 6. WG TEAM MODULE ---
 function initWGTeamModule() {
   const nameItems = gsap.utils.toArray(".wg__collection-name-item");
   const imageItems = gsap.utils.toArray(".wg__item");
   const roleItems = gsap.utils.toArray(".wg__right-role-wrap");
   const namesWrapper = document.querySelector(".wg__collection-name-list");
-  if (!nameItems.length || !imageItems.length) return;
-  
+  if (!nameItems.length) return;
   const isMobile = window.matchMedia("(max-width: 767px)").matches;
-  const imageByOrder = {};
-  imageItems.forEach(img => { if (img.dataset.order) imageByOrder[img.dataset.order] = img; });
-  const roleByOrder = {};
-  roleItems.forEach(role => { if (role.dataset.order) roleByOrder[role.dataset.order] = role; });
-
-  gsap.set(nameItems, { opacity: 0.5 });
-  gsap.set(imageItems, { autoAlpha: 0 });
-  gsap.set(roleItems, { autoAlpha: 0 });
-
-  const showByOrder = (order, pointerY) => {
+  const show = (order, y) => {
     gsap.set(nameItems, { opacity: 0.5 });
     const activeN = nameItems.find(el => el.dataset.order === order);
     if (activeN) gsap.set(activeN, { opacity: 1 });
-    if (imageByOrder[order]) { gsap.set(imageItems, { autoAlpha: 0 }); gsap.set(imageByOrder[order], { autoAlpha: 1 }); }
-    if (!isMobile) {
-        gsap.set(roleItems, { autoAlpha: 0 });
-        const activeR = roleByOrder[order];
-        if (activeR && namesWrapper) {
-            const b = namesWrapper.getBoundingClientRect();
-            gsap.set(activeR, { y: pointerY - b.top, autoAlpha: 1 });
-        }
+    imageItems.forEach(img => gsap.set(img, { autoAlpha: img.dataset.order === order ? 1 : 0 }));
+    if (!isMobile && namesWrapper) {
+        roleItems.forEach(role => {
+            const isMatch = role.dataset.order === order;
+            gsap.set(role, { autoAlpha: isMatch ? 1 : 0 });
+            if (isMatch) gsap.set(role, { y: y - namesWrapper.getBoundingClientRect().top });
+        });
     }
   };
-
   nameItems.forEach(el => {
-    el.onmouseenter = (e) => { if(!isMobile) showByOrder(el.dataset.order, e.clientY); };
-    el.onclick = (e) => { if(isMobile) { showByOrder(el.dataset.order); const r = el.querySelector(".wg__right-role-wrap-mobile"); if(r) r.style.display = "block"; }};
+    el.onmouseenter = (e) => { if(!isMobile) show(el.dataset.order, e.clientY); };
+    el.onclick = () => { if(isMobile) { show(el.dataset.order); const r = el.querySelector(".wg__right-role-wrap-mobile"); if(r) r.style.display = "block"; }};
   });
 }
 
-// --- 7. NAVIGAZIONE (VIEW TRANSITIONS) ---
+// --- 6. NAVIGAZIONE ---
 if (window.navigation) {
     navigation.addEventListener("navigate", (event) => {
         if (!event.destination.url.includes(window.location.origin)) return;
@@ -247,29 +258,24 @@ if (window.navigation) {
     });
 }
 
-// --- 8. RESET E FINALIZE ---
-function finalizePage(isTransition = false) {
+// --- 7. FINALIZE ---
+function finalizePage(isT = false) {
     window.scrollTo(0, 0);
     ScrollTrigger.getAll().forEach(t => t.kill());
     gsap.killTweensOf("*");
-
-    if (window.Webflow) {
-        window.Webflow.destroy();
-        window.Webflow.ready();
-        window.Webflow.require('ix2').init();
-    }
-
-    // Inizializza tutti i moduli
+    if (window.Webflow) { window.Webflow.destroy(); window.Webflow.ready(); window.Webflow.require('ix2').init(); }
+    if (window.lenis) { window.lenis.scrollTo(0, { immediate: true }); window.lenis.resize(); }
+    
+    initMwgEffect029();
+    initLogoWallCycle();
+    initAboutGridFlip();
     initCategoryCount();
     initGridToggle();
     initMutliFilterSetupMultiMatch();
     initPsItemHover();
     initWGTeamModule();
-    // Inizializza animazioni di ingresso
-    initializeAnimations(isTransition);
-
-    setTimeout(() => { ScrollTrigger.refresh(); }, 250);
+    initializeAnimations(isT);
+    setTimeout(() => { ScrollTrigger.refresh(); }, 300);
 }
 
-// Avvio Iniziale
 window.addEventListener("DOMContentLoaded", () => finalizePage(false));
