@@ -1,7 +1,8 @@
 /**
- * WEBFLOW ULTIMATE ENGINE - FIXED WORDS EFFECT
+ * WEBFLOW ULTIMATE ENGINE - Versione Corretta
  */
 
+// Registrazione Plugin
 if (typeof gsap !== "undefined") {
     gsap.registerPlugin(ScrollTrigger, Flip);
 }
@@ -38,41 +39,81 @@ function initializeAnimations(isTransition = false) {
     });
 }
 
-// --- 2. MWG EFFECT 029 (SCROLL WORDS) - FIXED ---
+// --- 2. MWG EFFECT 029 – SCROLL WORDS (RIPRISTINATO E ADATTATO) ---
+function wrapWordsInSpan(element) {
+    const text = element.textContent;
+    element.innerHTML = text
+        .split(" ")
+        .map((word) => `<span>${word}</span>`)
+        .join(" ");
+}
+
 function initMwgEffect029() {
+    if (typeof gsap === "undefined" || typeof ScrollTrigger === "undefined") return;
+
+    // Gestione elemento .scroll (fade out iniziale)
+    gsap.to(".scroll", {
+        autoAlpha: 0,
+        duration: 0.2,
+        scrollTrigger: {
+            trigger: ".mwg_effect029",
+            start: "top top",
+            end: "top top-=1",
+            toggleActions: "play none reverse none",
+        },
+    });
+
     const paragraph = document.querySelector(".mwg_effect029 .is--title-w");
     if (!paragraph || paragraph.dataset.processed === "true") return;
     paragraph.dataset.processed = "true";
 
-    // Split manuale mantenendo gli spazi e assegnando le classi
-    const wordsArray = paragraph.textContent.trim().split(/\s+/);
-    paragraph.innerHTML = wordsArray
-        .map(word => {
-            const randomClass = "word" + (Math.floor(Math.random() * 3) + 1); // Genera word1, word2 o word3
-            return `<span class="${randomClass}" style="display: inline-block; white-space: pre;">${word} </span>`;
-        })
-        .join("");
+    wrapWordsInSpan(paragraph);
 
-    const configs = [
-        { sel: ".word1", x: "-0.8em" },
-        { sel: ".word2", x: "1.6em" },
-        { sel: ".word3", x: "-2.4em" }
-    ];
+    const words = paragraph.querySelectorAll("span");
+    words.forEach((word) => {
+        word.classList.add("word" + Math.floor(Math.random() * 4));
+    });
 
-    configs.forEach(conf => {
-        const targets = paragraph.querySelectorAll(conf.sel);
-        if (targets.length > 0) {
-            gsap.to(targets, {
-                x: conf.x,
-                ease: "none",
-                scrollTrigger: {
-                    trigger: paragraph,
-                    start: "top 90%",
-                    end: "bottom 10%",
-                    scrub: 0.2
-                }
-            });
-        }
+    // Word 1 animation
+    document.querySelectorAll(".mwg_effect029 .word1").forEach((el) => {
+        gsap.to(el, {
+            x: "-0.8em",
+            ease: "none",
+            scrollTrigger: {
+                trigger: el,
+                start: "top 80%",
+                end: "bottom 60%",
+                scrub: 0.2,
+            },
+        });
+    });
+
+    // Word 2 animation
+    document.querySelectorAll(".mwg_effect029 .word2").forEach((el) => {
+        gsap.to(el, {
+            x: "1.6em",
+            ease: "none",
+            scrollTrigger: {
+                trigger: el,
+                start: "top 80%",
+                end: "bottom 60%",
+                scrub: 0.2,
+            },
+        });
+    });
+
+    // Word 3 animation
+    document.querySelectorAll(".mwg_effect029 .word3").forEach((el) => {
+        gsap.to(el, {
+            x: "-2.4em",
+            ease: "none",
+            scrollTrigger: {
+                trigger: el,
+                start: "top 80%",
+                end: "bottom 60%",
+                scrub: 0.2,
+            },
+        });
     });
 }
 
@@ -130,10 +171,9 @@ function initAboutGridFlip() {
     };
     if (btnBig) btnBig.onclick = () => switchLayout(true);
     if (btnSmall) btnSmall.onclick = () => switchLayout(false);
-    updateButtons(grid.classList.contains("is--big"));
 }
 
-// --- 5. ALTRI MODULI (Team, Count, Toggle, Filter, Hover) ---
+// --- 5. ALTRI MODULI ---
 function initCategoryCount() {
     const categories = document.querySelectorAll('[data-category-id]');
     const projects = document.querySelectorAll('[data-project-category]');
@@ -264,8 +304,12 @@ function finalizePage(isT = false) {
     ScrollTrigger.getAll().forEach(t => t.kill());
     gsap.killTweensOf("*");
     if (window.Webflow) { window.Webflow.destroy(); window.Webflow.ready(); window.Webflow.require('ix2').init(); }
-    if (window.lenis) { window.lenis.scrollTo(0, { immediate: true }); window.lenis.resize(); }
+    if (window.lenis) { 
+        window.lenis.scrollTo(0, { immediate: true }); 
+        window.lenis.resize(); 
+    }
     
+    // Inizializza i moduli
     initMwgEffect029();
     initLogoWallCycle();
     initAboutGridFlip();
@@ -275,7 +319,8 @@ function finalizePage(isT = false) {
     initPsItemHover();
     initWGTeamModule();
     initializeAnimations(isT);
-    setTimeout(() => { ScrollTrigger.refresh(); }, 300);
+    
+    setTimeout(() => { ScrollTrigger.refresh(); }, 350);
 }
 
 window.addEventListener("DOMContentLoaded", () => finalizePage(false));
