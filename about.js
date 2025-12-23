@@ -1,6 +1,6 @@
 /**
- * WEBFLOW ULTIMATE ENGINE - FINAL FIX
- * Fixes: Filter Reset Button Visibility & Hover Animation Glitches
+ * WEBFLOW ULTIMATE ENGINE - FINAL INTEGRATION
+ * Fixes: MWG Words Logic, Logo Wall Loop, Filters & Navigation
  */
 
 // 1. REGISTRAZIONE PLUGIN
@@ -11,7 +11,6 @@ if (typeof gsap !== "undefined") {
 // =============================================================================
 // HELPER: SAFE REVERT (PULIZIA HTML)
 // =============================================================================
-// Questa funzione pulisce l'HTML dai tag di SplitType prima di ri-applicarli
 function safeSplitRevert(elements, className) {
     if (!elements.length) return;
     elements.forEach(el => {
@@ -20,7 +19,6 @@ function safeSplitRevert(elements, className) {
             el.splitInstance = null;
         }
         el.classList.remove(className);
-        // Rimuove eventuali wrapper residui generati manualmente
         const wrappers = el.querySelectorAll('.line-wrapper');
         wrappers.forEach(w => {
             const parent = w.parentNode;
@@ -31,7 +29,7 @@ function safeSplitRevert(elements, className) {
 }
 
 // =============================================================================
-// 2. ANIMAZIONI INGRESSO PAGE LOAD (data-transition)
+// 2. ANIMAZIONI INGRESSO (data-transition)
 // =============================================================================
 function initializeAnimations(isTransition = false) {
     const dynamicDelay = isTransition ? 1.1 : 0.2;
@@ -44,14 +42,11 @@ function initializeAnimations(isTransition = false) {
     }
 
     const elementsToAnimate = document.querySelectorAll('[data-transition]');
-    // Pulizia preventiva
     safeSplitRevert(elementsToAnimate, 'split-done');
 
     elementsToAnimate.forEach(el => {
         const split = new SplitType(el, { types: 'lines', lineClass: 'line-inner' });
         el.splitInstance = split; 
-
-        // Avvolgiamo le linee per l'effetto maschera
         split.lines.forEach(line => {
             const wrapper = document.createElement('div');
             wrapper.classList.add('line-wrapper');
@@ -61,7 +56,6 @@ function initializeAnimations(isTransition = false) {
             wrapper.style.display = 'block';
             line.style.display = 'block';
         });
-
         const spans = el.querySelectorAll(".line-inner");
         gsap.set(spans, { y: "110%" });
         el.classList.add('split-done');
@@ -71,7 +65,180 @@ function initializeAnimations(isTransition = false) {
 }
 
 // =============================================================================
-// 3. SISTEMA MULTI-FILTER (FIX RESET BUTTON)
+// 3. MWG EFFECT 029 – SCROLL WORDS (TUO CODICE INTEGRATO)
+// =============================================================================
+function wrapWordsInSpan(element) {
+    const text = element.textContent;
+    element.innerHTML = text.split(" ").map((word) => `<span>${word}</span>`).join(" ");
+}
+
+function initMwgEffect029() {
+    if (typeof gsap === "undefined" || typeof ScrollTrigger === "undefined") return;
+
+    // Reset preventivo per evitare duplicazione span
+    const paragraph = document.querySelector(".mwg_effect029 .is--title-w");
+    if (!paragraph) return;
+    
+    // Se è già stato processato, lo resettiamo al testo pulito prima di riapplicare
+    if(paragraph.dataset.mwgProcessed === "true") {
+        paragraph.innerHTML = paragraph.textContent; 
+    }
+    paragraph.dataset.mwgProcessed = "true";
+
+    // Animazione Scroll Icon
+    const scrollIcon = document.querySelector(".scroll");
+    if (scrollIcon) {
+        gsap.to(".scroll", {
+            autoAlpha: 0,
+            duration: 0.2,
+            scrollTrigger: {
+                trigger: ".mwg_effect029",
+                start: "top top",
+                end: "top top-=1",
+                toggleActions: "play none reverse none",
+            },
+        });
+    }
+
+    // Applicazione Spans
+    wrapWordsInSpan(paragraph);
+
+    // Assegnazione Classi Random (word0, word1, word2, word3)
+    const words = paragraph.querySelectorAll("span");
+    words.forEach((word) => {
+        word.classList.add("word" + Math.floor(Math.random() * 4));
+    });
+
+    // Animazioni GSAP specifiche
+    document.querySelectorAll(".mwg_effect029 .word1").forEach((el) => {
+        gsap.to(el, { x: "-0.8em", ease: "none", scrollTrigger: { trigger: el, start: "top 80%", end: "bottom 60%", scrub: 0.2 }});
+    });
+
+    document.querySelectorAll(".mwg_effect029 .word2").forEach((el) => {
+        gsap.to(el, { x: "1.6em", ease: "none", scrollTrigger: { trigger: el, start: "top 80%", end: "bottom 60%", scrub: 0.2 }});
+    });
+
+    document.querySelectorAll(".mwg_effect029 .word3").forEach((el) => {
+        gsap.to(el, { x: "-2.4em", ease: "none", scrollTrigger: { trigger: el, start: "top 80%", end: "bottom 60%", scrub: 0.2 }});
+    });
+}
+
+// =============================================================================
+// 4. LOGO WALL CYCLE (TUO CODICE INTEGRATO)
+// =============================================================================
+function initLogoWallCycle() {
+    if (typeof gsap === "undefined" || typeof ScrollTrigger === "undefined") return;
+
+    const loopDelay = 1.5; 
+    const duration = 0.9; 
+
+    const roots = document.querySelectorAll("[data-logo-wall-cycle-init]");
+    if (!roots.length) return;
+
+    roots.forEach((root) => {
+        // Controllo init per evitare loop doppi sulla stessa pagina
+        if(root.dataset.lwInitialized === "true") return;
+        root.dataset.lwInitialized = "true";
+
+        const list = root.querySelector("[data-logo-wall-list]");
+        if (!list) return;
+
+        const items = Array.from(list.querySelectorAll("[data-logo-wall-item]"));
+        if (!items.length) return;
+
+        const shuffleFront = root.getAttribute("data-logo-wall-shuffle") !== "false";
+        const originalTargets = items.map((item) => item.querySelector("[data-logo-wall-target]")).filter(Boolean);
+
+        let visibleItems = [], visibleCount = 0, pool = [], pattern = [], patternIndex = 0, tl;
+
+        function isVisible(el) { return window.getComputedStyle(el).display !== "none"; }
+        function shuffleArray(arr) {
+            const a = arr.slice();
+            for (let i = a.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [a[i], a[j]] = [a[j], a[i]];
+            }
+            return a;
+        }
+
+        function setup() {
+            if (tl) tl.kill();
+            visibleItems = items.filter(isVisible);
+            visibleCount = visibleItems.length;
+            pattern = shuffleArray(Array.from({ length: visibleCount }, (_, i) => i));
+            patternIndex = 0;
+
+            items.forEach((item) => {
+                item.querySelectorAll("[data-logo-wall-target]").forEach((old) => old.remove());
+            });
+
+            pool = originalTargets.map((n) => n.cloneNode(true));
+            let front, rest;
+            if (shuffleFront) {
+                const shuffledAll = shuffleArray(pool);
+                front = shuffledAll.slice(0, visibleCount);
+                rest = shuffleArray(shuffledAll.slice(visibleCount));
+                pool = front.concat(rest);
+            } else {
+                front = pool.slice(0, visibleCount);
+                rest = shuffleArray(pool.slice(visibleCount));
+                pool = front.concat(rest);
+            }
+
+            for (let i = 0; i < visibleCount; i++) {
+                const parent = visibleItems[i].querySelector("[data-logo-wall-target-parent]") || visibleItems[i];
+                parent.appendChild(pool.shift());
+            }
+
+            tl = gsap.timeline({ repeat: -1, repeatDelay: loopDelay });
+            tl.call(swapNext);
+            tl.play();
+        }
+
+        function swapNext() {
+            const nowCount = items.filter(isVisible).length;
+            if (nowCount !== visibleCount) { setup(); return; }
+            if (!pool.length) return;
+
+            const idx = pattern[patternIndex % visibleCount];
+            patternIndex++;
+
+            const container = visibleItems[idx];
+            const parent = container.querySelector("[data-logo-wall-target-parent]") || container.querySelector("*:has(> [data-logo-wall-target])") || container;
+            const existing = parent.querySelectorAll("[data-logo-wall-target]");
+            if (existing.length > 1) return;
+
+            const current = parent.querySelector("[data-logo-wall-target]");
+            const incoming = pool.shift();
+
+            gsap.set(incoming, { yPercent: 50, autoAlpha: 0 });
+            parent.appendChild(incoming);
+
+            if (current) {
+                gsap.to(current, {
+                    yPercent: -50, autoAlpha: 0, duration, ease: "expo.inOut",
+                    onComplete: () => { current.remove(); pool.push(current); },
+                });
+            }
+            gsap.to(incoming, { yPercent: 0, autoAlpha: 1, duration, delay: 0.1, ease: "expo.inOut" });
+        }
+
+        setup();
+
+        ScrollTrigger.create({
+            trigger: root,
+            start: "top bottom",
+            end: "bottom top",
+            onEnter: () => tl && tl.play(),
+            onLeave: () => tl && tl.pause(),
+            onEnterBack: () => tl && tl.play(),
+            onLeaveBack: () => tl && tl.pause(),
+        });
+    });
+}
+
+// =============================================================================
+// 5. SISTEMA MULTI-FILTER (FIXED)
 // =============================================================================
 let currentResizeHandler = null;
 
@@ -139,8 +306,6 @@ function initMutliFilterSetupMultiMatch() {
 
             const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
             let visibleCounter = 0;
-
-            // Determina se ci sono filtri attivi (diverso da 'all')
             const isFiltered = activeTags !== null && !(activeTags instanceof Set && activeTags.has('all'));
 
             items.forEach(el => {
@@ -164,19 +329,14 @@ function initMutliFilterSetupMultiMatch() {
 
             buttons.forEach(btn => {
                 const t = (btn.getAttribute('data-filter-target') || '').trim().toLowerCase();
-                
-                // LOGICA DEL PULSANTE RESET
                 if (t === 'reset') {
-                     // Se stiamo filtrando, il reset è attivo/visibile. Se siamo su All, è spento.
                      btn.setAttribute('data-filter-status', isFiltered ? 'active' : 'not-active');
                 } else {
-                    // Logica normale per gli altri bottoni
                     let on = (t === 'all') ? !isFiltered : 
                              (targetMatch === 'single' ? activeTags === t : (activeTags instanceof Set && activeTags.has(t)));
                     btn.setAttribute('data-filter-status', on ? 'active' : 'not-active');
                 }
             });
-            
             ScrollTrigger.refresh();
         };
 
@@ -190,7 +350,7 @@ function initMutliFilterSetupMultiMatch() {
 }
 
 // =============================================================================
-// 4. ANIMAZIONI GSAP HOVER (FIXED: WRAPPER AGGIUNTI)
+// 6. ANIMAZIONI GSAP HOVER (FIXED: WRAPPER)
 // =============================================================================
 function initPsItemHover() {
     const psItems = document.querySelectorAll(".ps__item");
@@ -200,41 +360,31 @@ function initPsItemHover() {
         const imgWrap = item.querySelector(".ps__item-img");
         const cta = item.querySelector(".projects__cta");
         const targets = item.querySelectorAll("[data-split-ps]");
-
         if (!imgWrap || !targets.length) return;
 
-        // 1. PULIZIA: Rimuove split precedenti e wrapper per evitare nesting infinito
         safeSplitRevert(targets, 'split-done-hover');
 
         const allLines = [];
-        
         targets.forEach(el => {
-            // 2. SPLIT
             const split = new SplitType(el, { types: "lines", lineClass: "split-line" });
             el.splitInstance = split; 
             el.classList.add('split-done-hover');
             
-            // 3. WRAPPING (CRUCIALE PER EVITARE GLITCH E "TAGLI")
-            // Senza questo wrapper con overflow hidden, l'animazione yPercent non maschera il testo
             split.lines.forEach(line => {
                 const wrapper = document.createElement('div');
-                wrapper.classList.add('line-wrapper'); // Usa la stessa classe del CSS globale o una specifica
-                // Applica stili inline per sicurezza assoluta
+                wrapper.classList.add('line-wrapper');
                 wrapper.style.overflow = 'hidden';
                 wrapper.style.display = 'block';
-                wrapper.style.lineHeight = 'inherit'; // Mantiene l'altezza riga corretta
-                
+                wrapper.style.lineHeight = 'inherit';
                 line.parentNode.insertBefore(wrapper, line);
                 wrapper.appendChild(line);
             });
 
-            // 4. STATO INIZIALE
             gsap.set(split.lines, { yPercent: 105 });
             allLines.push(...split.lines);
         });
 
         if (cta) gsap.set(cta, { autoAlpha: 0 });
-
         const hoverTl = gsap.timeline({ paused: true });
         hoverTl.to(allLines, { yPercent: 0, duration: 0.8, ease: "expo.out", stagger: 0.05 }, 0);
         if (cta) hoverTl.to(cta, { autoAlpha: 1, duration: 0.4, ease: "power2.out" }, 0);
@@ -245,46 +395,8 @@ function initPsItemHover() {
 }
 
 // =============================================================================
-// 5. ALTRI MODULI
+// 7. ALTRI MODULI (Count, Toggle, Team, Flip)
 // =============================================================================
-function initMwgEffect029() {
-    const triggerEl = document.querySelector(".mwg_effect029");
-    const paragraph = document.querySelector(".mwg_effect029 .is--title-w");
-    if (!triggerEl || !paragraph) return;
-    
-    if(paragraph.dataset.processed === "true") {
-        paragraph.innerHTML = paragraph.textContent; 
-        paragraph.dataset.processed = "false";
-    }
-
-    const scrollIcon = document.querySelector(".scroll");
-    if (scrollIcon) {
-        gsap.to(scrollIcon, {
-            autoAlpha: 0,
-            duration: 0.2,
-            scrollTrigger: {
-                trigger: triggerEl,
-                start: "top top",
-                end: "top top-=1",
-                toggleActions: "play none reverse none",
-            },
-        });
-    }
-
-    paragraph.dataset.processed = "true";
-    paragraph.innerHTML = paragraph.textContent.split(" ").map(w => `<span>${w}</span>`).join(" ");
-    const words = paragraph.querySelectorAll("span");
-    words.forEach(w => w.classList.add("word" + (Math.floor(Math.random() * 3) + 1)));
-
-    const configs = [{ sel: ".word1", x: "-0.8em" }, { sel: ".word2", x: "1.6em" }, { sel: ".word3", x: "-2.4em" }];
-    configs.forEach(conf => {
-        const targets = paragraph.querySelectorAll(conf.sel);
-        if(targets.length) {
-            gsap.to(targets, { x: conf.x, ease: "none", scrollTrigger: { trigger: paragraph, start: "top 80%", end: "bottom 60%", scrub: 0.2 }});
-        }
-    });
-}
-
 function initCategoryCount() {
     const categories = document.querySelectorAll('[data-category-id]');
     const projects = document.querySelectorAll('[data-project-category]');
@@ -309,39 +421,6 @@ function initGridToggle() {
             contents.forEach(c => { if (c.getAttribute('data-grid') === gridId) c.classList.add('active'); });
             ScrollTrigger.refresh();
         };
-    });
-}
-
-function initLogoWallCycle() {
-    const roots = document.querySelectorAll("[data-logo-wall-cycle-init]");
-    roots.forEach((root) => {
-        if (root.dataset.initialized === "true") return; 
-        root.dataset.initialized = "true";
-        const list = root.querySelector("[data-logo-wall-list]");
-        const items = Array.from(list?.querySelectorAll("[data-logo-wall-item]") || []);
-        if (!items.length) return;
-        const original = items.map(i => i.querySelector("[data-logo-wall-target]")).filter(Boolean);
-        let tl, pool = [], visible = [];
-        const setup = () => {
-            if (tl) tl.kill();
-            visible = items.filter(el => window.getComputedStyle(el).display !== "none");
-            pool = original.map(n => n.cloneNode(true)).sort(() => Math.random() - 0.5);
-            visible.forEach(v => { v.innerHTML = ''; v.appendChild(pool.shift()); });
-            tl = gsap.timeline({ repeat: -1, repeatDelay: 1.5 });
-            tl.call(() => {
-                const idx = Math.floor(Math.random() * visible.length);
-                const parent = visible[idx];
-                const current = parent.querySelector("[data-logo-wall-target]");
-                const incoming = pool.shift();
-                if (!incoming || !current) return;
-                gsap.set(incoming, { yPercent: 50, autoAlpha: 0 });
-                parent.appendChild(incoming);
-                gsap.to(current, { yPercent: -50, autoAlpha: 0, duration: 0.9, onComplete: () => { current.remove(); pool.push(current); }});
-                gsap.to(incoming, { yPercent: 0, autoAlpha: 1, duration: 0.9 });
-            });
-        };
-        setup();
-        ScrollTrigger.create({ trigger: root, onEnter: () => tl.play(), onLeave: () => tl.pause() });
     });
 }
 
@@ -393,7 +472,7 @@ function initWGTeamModule() {
 }
 
 // =============================================================================
-// 6. NAVIGAZIONE E SYNC
+// 8. NAVIGAZIONE (VIEW TRANSITIONS + HEAD SYNC)
 // =============================================================================
 function syncHead(newDoc) {
     const currentHead = document.head;
@@ -437,7 +516,7 @@ if (window.navigation) {
 }
 
 // =============================================================================
-// 7. FINALIZE (RESET & RE-INIT)
+// 9. FINALIZE (RESET & RE-INIT)
 // =============================================================================
 function finalizePage(isTransition = false) {
     window.scrollTo(0, 0);
@@ -458,10 +537,12 @@ function finalizePage(isTransition = false) {
     initMutliFilterSetupMultiMatch();
     initPsItemHover();
     
+    // Moduli Custom Aggiornati
     initMwgEffect029();
+    initLogoWallCycle();
+
     initCategoryCount();
     initGridToggle();
-    if (typeof initLogoWallCycle === "function") initLogoWallCycle();
     if (typeof initWGTeamModule === "function") initWGTeamModule();
     if (typeof initAboutGridFlip === "function") initAboutGridFlip();
     
