@@ -1,9 +1,10 @@
 /**
- * WEBFLOW ULTIMATE ENGINE - FINAL FIX (LOGO WALL REPAIRED)
- * Features: Navigation, Filters, Team, Words, Wall, Flip, Scale, Circle, CMS Next, Parallax, Scramble, Footer Canvas
+ * WEBFLOW ULTIMATE ENGINE - FINAL PRODUCTION
+ * Integrates: Navigation, Parallax, Scramble, Footer, CMS Next, Scale, Circle,
+ * AND THE NEW: MWG Words, Logo Wall Cycle, About Grid Flip.
  */
 
-// 1. REGISTRAZIONE PLUGIN
+// 1. REGISTRAZIONE PLUGIN GLOBALE
 if (typeof gsap !== "undefined") {
     const plugins = [ScrollTrigger, Flip];
     if (typeof SplitText !== "undefined") plugins.push(SplitText);
@@ -12,7 +13,7 @@ if (typeof gsap !== "undefined") {
 }
 
 // =============================================================================
-// HELPER: SAFE REVERT
+// HELPER: SAFE REVERT (PULIZIA HTML PER NAVIGAZIONE)
 // =============================================================================
 function safeSplitRevert(elements, className) {
     if (!elements.length) return;
@@ -32,214 +33,85 @@ function safeSplitRevert(elements, className) {
 }
 
 // =============================================================================
-// 2. PARALLAX SYSTEM
+// 2. MWG EFFECT 029 – SCROLL WORDS (TUO CODICE)
 // =============================================================================
-function initGlobalParallax() {
-    let mm = gsap.matchMedia();
-    mm.add({
-        isMobile: "(max-width:479px)", isMobileLandscape: "(max-width:767px)",
-        isTablet: "(max-width:991px)", isDesktop: "(min-width:992px)",
-    }, (ctx) => {
-        let { isMobile, isMobileLandscape, isTablet } = ctx.conditions;
-        ScrollTrigger.batch('[data-parallax="trigger"]', {
-            onEnter: batch => {
-                batch.forEach((trigger) => {
-                    let disable = trigger.getAttribute("data-parallax-disable");
-                    if ((disable === "mobile" && isMobile) || (disable === "mobileLandscape" && isMobileLandscape) || (disable === "tablet" && isTablet)) return;
-                    let target = trigger.querySelector('[data-parallax="target"]') || trigger;
-                    let direction = trigger.getAttribute("data-parallax-direction") || "vertical";
-                    let axis = direction === "horizontal" ? "xPercent" : "yPercent";
-                    let scrubVal = trigger.getAttribute("data-parallax-scrub") ? parseFloat(trigger.getAttribute("data-parallax-scrub")) : true;
-                    let startVal = parseFloat(trigger.getAttribute("data-parallax-start") || 20);
-                    let endVal = parseFloat(trigger.getAttribute("data-parallax-end") || -20);
-                    let scrollStart = trigger.getAttribute("data-parallax-scroll-start") || "top bottom";
-                    let scrollEnd = trigger.getAttribute("data-parallax-scroll-end") || "bottom top";
-                    gsap.fromTo(target, { [axis]: startVal }, {
-                        [axis]: endVal, ease: "none",
-                        scrollTrigger: { trigger: trigger, start: `clamp(${scrollStart})`, end: `clamp(${scrollEnd})`, scrub: scrubVal }
-                    });
-                });
-            }
+function wrapWordsInSpan(element) {
+    const text = element.textContent;
+    element.innerHTML = text.split(" ").map((word) => `<span>${word}</span>`).join(" ");
+}
+
+function initMwgEffect029() {
+    const paragraph = document.querySelector(".mwg_effect029 .is--title-w");
+    if (!paragraph) return;
+
+    // Reset preventivo per navigazione
+    if (paragraph.dataset.processed === "true") {
+        paragraph.innerHTML = paragraph.textContent; 
+    }
+    paragraph.dataset.processed = "true";
+
+    // Gestione elemento .scroll
+    const scrollEl = document.querySelector(".scroll");
+    if(scrollEl) {
+        gsap.to(scrollEl, {
+            autoAlpha: 0,
+            duration: 0.2,
+            scrollTrigger: {
+                trigger: ".mwg_effect029",
+                start: "top top",
+                end: "top top-=1",
+                toggleActions: "play none reverse none",
+            },
         });
+    }
+
+    wrapWordsInSpan(paragraph);
+
+    const words = paragraph.querySelectorAll("span");
+    words.forEach((word) => {
+        word.classList.add("word" + Math.floor(Math.random() * 4));
+    });
+
+    document.querySelectorAll(".mwg_effect029 .word1").forEach((el) => {
+        gsap.to(el, { x: "-0.8em", ease: "none", scrollTrigger: { trigger: el, start: "top 80%", end: "bottom 60%", scrub: 0.2 } });
+    });
+
+    document.querySelectorAll(".mwg_effect029 .word2").forEach((el) => {
+        gsap.to(el, { x: "1.6em", ease: "none", scrollTrigger: { trigger: el, start: "top 80%", end: "bottom 60%", scrub: 0.2 } });
+    });
+
+    document.querySelectorAll(".mwg_effect029 .word3").forEach((el) => {
+        gsap.to(el, { x: "-2.4em", ease: "none", scrollTrigger: { trigger: el, start: "top 80%", end: "bottom 60%", scrub: 0.2 } });
     });
 }
 
 // =============================================================================
-// 3. SPLIT TEXT ANIMATIONS (LINES & EYEBROW)
-// =============================================================================
-let splitResizeHandler = null;
-const splitData = new Map();
-
-function initSplitTextAnimations() {
-    if (typeof SplitText === "undefined") return;
-
-    function createSplit(el) {
-        const alreadyAnimated = el._hasAnimated === true;
-        const existing = splitData.get(el);
-        if (existing) { existing.split.revert(); existing.st.kill(); }
-
-        const split = new SplitText(el, { type: "lines", mask: "lines", linesClass: "split-line" });
-        let st;
-
-        if (alreadyAnimated) {
-            gsap.set(split.lines, { yPercent: 0 });
-            st = ScrollTrigger.create({ trigger: el, start: "top bottom", onEnter: () => gsap.set(split.lines, { yPercent: 0 }) });
-        } else {
-            gsap.set(split.lines, { yPercent: 100 });
-            st = ScrollTrigger.create({
-                trigger: el, start: "top 80%",
-                onEnter: () => {
-                    if (el._hasAnimated) return;
-                    el._hasAnimated = true;
-                    gsap.to(split.lines, { yPercent: 0, duration: 0.8, ease: "expo.out", stagger: 0.08 });
-                }
-            });
-        }
-        splitData.set(el, { split, st });
-    }
-
-    const elements = gsap.utils.toArray("[data-split]");
-    elements.forEach(createSplit);
-
-    const eyebrowElements = gsap.utils.toArray(".eyebrow");
-    eyebrowElements.forEach((el) => {
-        if(el._splitInstance) el._splitInstance.revert();
-        const split = new SplitText(el, { type: "chars", mask: "chars", charsClass: "eyebrow-char" });
-        el._splitInstance = split;
-        const chars = split.chars;
-        gsap.set(chars, { opacity: 0 });
-        ScrollTrigger.create({
-            trigger: el, start: "top 85%", once: true,
-            onEnter: () => { gsap.to(chars, { opacity: 1, duration: 0.05, ease: "power1.out", stagger: { amount: 0.4, from: "random" } }); }
-        });
-    });
-
-    if (splitResizeHandler) window.removeEventListener("resize", splitResizeHandler);
-    splitResizeHandler = () => { elements.forEach(createSplit); ScrollTrigger.refresh(); };
-    window.addEventListener("resize", splitResizeHandler);
-}
-
-// =============================================================================
-// 4. SCRAMBLE TEXT HOVER
-// =============================================================================
-function initScrambleTextAnimations() {
-    if (typeof gsap === "undefined" || typeof ScrambleTextPlugin === "undefined") return;
-    function highlightRandomChar(el) {
-        const chars = el.querySelectorAll(".char");
-        if (!chars.length) return;
-        chars.forEach(c => (c.style.color = ""));
-        const rand = chars[Math.floor(Math.random() * chars.length)];
-        if (rand) rand.style.color = "#C3FF00";
-    }
-    document.querySelectorAll('[data-scramble-hover="link"]').forEach(target => {
-        const textEl = target.querySelector('[data-scramble-hover="target"]');
-        if (!textEl) return;
-        const originalText = textEl.textContent;
-        const customHoverText = textEl.getAttribute("data-scramble-text");
-        if (typeof SplitText !== "undefined") new SplitText(textEl, { type: "words, chars", wordsClass: "word", charsClass: "char" });
-        else if (typeof SplitType !== "undefined") new SplitType(textEl, { types: "words, chars", wordClass: "word", charClass: "char" });
-
-        const newTarget = target.cloneNode(true);
-        target.parentNode.replaceChild(newTarget, target);
-        const newTextEl = newTarget.querySelector('[data-scramble-hover="target"]');
-
-        newTarget.addEventListener("mouseenter", () => {
-            gsap.to(newTextEl, { duration: 1, scrambleText: { text: customHoverText || originalText, chars: "_X" }, onUpdate: () => highlightRandomChar(newTextEl) });
-        });
-        newTarget.addEventListener("mouseleave", () => {
-            gsap.to(newTextEl, { duration: 0.6, scrambleText: { text: originalText, speed: 2, chars: "X_" }, onUpdate: () => highlightRandomChar(newTextEl) });
-        });
-    });
-}
-
-// =============================================================================
-// 5. FOOTER CANVAS SCRUBBER
-// =============================================================================
-let footerScrollHandler = null;
-let footerResizeObserver = null;
-function initFooterCanvasScrubber() {
-    let e = document.getElementById("footercanvas");
-    if (!e || !e.getContext) return;
-    if (footerScrollHandler) window.removeEventListener("scroll", footerScrollHandler);
-    if (footerResizeObserver) { footerResizeObserver.disconnect(); footerResizeObserver = null; }
-
-    let t = e.getContext("2d", { alpha: !1, desynchronized: !0 });
-    t.imageSmoothingEnabled = !0, t.imageSmoothingQuality = "high";
-    let n = e.dataset.base || "", a = (e.dataset.ext || "jpg").toLowerCase(),
-        i = parseInt(e.dataset.frames || "45", 10), r = parseInt(e.dataset.pad || "5", 10),
-        l = parseInt(e.dataset.start || "0", 10);
-    if (!n || !i) return;
-    let o = e.parentElement || e, s = 0, c = 0, f = 1, d = 0, h = 0;
-    function u() {
-        f = Math.min(window.devicePixelRatio || 1, 2);
-        let n = Math.max(1, Math.round(o.clientWidth * f)), a = Math.max(1, Math.round(o.clientHeight * f));
-        (e.width !== n || e.height !== a) && (e.width = n, e.height = a, t.setTransform(1, 0, 0, 1, 0, 0), t.scale(f, f)), s = Math.max(1, o.clientWidth), c = Math.max(1, o.clientHeight)
-    }
-    let $ = new Map, m = new Map;
-    async function g(e) {
-        if (e < l || e > l + (i - 1)) return null;
-        if ($.has(e)) return $.get(e);
-        if (m.has(e)) return m.get(e);
-        let s = n + String(e).padStart(r, "0") + "." + a;
-        let c = fetch(s, { cache: "force-cache" }).then(e => e.ok ? e.blob() : null).then(createImageBitmap).then(t => {
-            if(t) { if($.size > 60) { let key = $.keys().next().value; $.get(key)?.close?.(); $.delete(key); } $.set(e, t); m.delete(e); if((!d || !h)) { d = t.width; h = t.height; } return t; } return null;
-        }).catch(() => { m.delete(e); return null; });
-        return m.set(e, c), c;
-    }
-    let _ = { start: null, end: null };
-    function b(e) {
-        let n = Math.max(l, e - 20), a = Math.min(l + (i - 1), e + 20);
-        if (n !== _.start || a !== _.end) { _ = { start: n, end: a }; for (let r = n; r <= a; r += 10) { setTimeout(() => { for (let e = r; e <= Math.min(a, r + 9); e++) $.has(e) || m.has(e) || g(e) }, 0) } }
-    }
-    function v(e) {
-        if (!e || !s || !c) return;
-        let n = (d || e.width) / (h || e.height), a = s / c, i_draw, r_draw;
-        n > a ? i_draw = (r_draw = c) * n : r_draw = (i_draw = s) / n;
-        t.clearRect(0, 0, s, c); t.drawImage(e, (s - i_draw) * .5, (c - r_draw) * .5, i_draw, r_draw);
-    }
-    let x = l, w = null, p = !1;
-    function y() { w && v(w) }
-    let C = (function e(t) { let n = t; for (; n && !n.classList?.contains("footer__video-scrub");) n = n.parentElement; return n || document.body })(e);
-    u(); for (let E = l; E < l + Math.min(20, i); E++) g(E); b(l); g(l).then(e => { e && (w = e, y()) });
-    footerScrollHandler = function() {
-        let rect = C.getBoundingClientRect();
-        let top = window.scrollY + rect.top;
-        let total = Math.max(1, C.offsetHeight - window.innerHeight);
-        let progress = Math.min(1, Math.max(0, (window.scrollY - top) / total));
-        let frame = Math.min(l + (i - 1), Math.max(l, Math.round(progress * (i - 1)) + l));
-        if (frame !== x) { b(x = frame); if (!p) { p = true; requestAnimationFrame(async () => { let img = $.get(x); if (!img) { img = await g(x); } if (img) { w = img; v(img); } p = false; }); } }
-    };
-    window.addEventListener("scroll", footerScrollHandler, { passive: true });
-    if (typeof ResizeObserver !== "undefined") { footerResizeObserver = new ResizeObserver(() => { u(); y(); }); footerResizeObserver.observe(o); }
-}
-
-// =============================================================================
-// 6. LOGO WALL CYCLE (REPAIRED & CLEANED)
+// 3. LOGO WALL CYCLE (TUO CODICE)
 // =============================================================================
 function initLogoWallCycle() {
+    const loopDelay = 1.5; 
+    const duration = 0.9; 
+
     const roots = document.querySelectorAll("[data-logo-wall-cycle-init]");
     if (!roots.length) return;
 
     roots.forEach((root) => {
-        // Rimuoviamo il controllo initialized per forzare il refresh se si torna indietro
+        // Protezione contro init multipli sulla stessa pagina, ma permette refresh su navigazione
+        if(root.dataset.initialized === "true") return; 
+        root.dataset.initialized = "true";
+
         const list = root.querySelector("[data-logo-wall-list]");
         if (!list) return;
-        
-        // Selezioniamo solo i PRIMI elementi originali, ignorando i cloni precedenti
-        // Questo è il fix per evitare duplicati infiniti
+
         const items = Array.from(list.querySelectorAll("[data-logo-wall-item]"));
         if (!items.length) return;
 
-        const visibleItems = items.filter(el => window.getComputedStyle(el).display !== "none");
-        if (!visibleItems.length) return;
+        const shuffleFront = root.getAttribute("data-logo-wall-shuffle") !== "false";
+        const originalTargets = items.map((item) => item.querySelector("[data-logo-wall-target]")).filter(Boolean);
 
-        // Estrazione pulita dei target originali
-        const originalTargets = items.map(item => {
-            // Cerca il target, ma ignora quelli con classe 'cloned-logo' se per caso sono rimasti
-            return item.querySelector("[data-logo-wall-target]:not(.cloned-logo)");
-        }).filter(Boolean);
+        let visibleItems = [], visibleCount = 0, pool = [], pattern = [], patternIndex = 0, tl;
 
-        let pool = [], pattern = [], patternIndex = 0, tl;
+        function isVisible(el) { return window.getComputedStyle(el).display !== "none"; }
 
         function shuffleArray(arr) {
             const a = arr.slice();
@@ -253,58 +125,60 @@ function initLogoWallCycle() {
         function setup() {
             if (tl) tl.kill();
 
-            // PULIZIA TOTALE: Svuota i contenitori padre per rimuovere tutto
-            items.forEach(item => {
-                const parent = item.querySelector("[data-logo-wall-target-parent]") || item;
-                parent.innerHTML = ''; 
-            });
-
-            pattern = shuffleArray(Array.from({ length: visibleItems.length }, (_, i) => i));
+            visibleItems = items.filter(isVisible);
+            visibleCount = visibleItems.length;
+            pattern = shuffleArray(Array.from({ length: visibleCount }, (_, i) => i));
             patternIndex = 0;
 
-            // Creiamo un nuovo pool dai target originali
-            pool = originalTargets.map(n => {
-                const c = n.cloneNode(true);
-                c.classList.add('cloned-logo');
-                return c;
+            // Pulizia target iniettati
+            items.forEach((item) => {
+                const targets = item.querySelectorAll("[data-logo-wall-target]");
+                // Rimuove solo se ce ne sono più di uno (quelli iniettati)
+                if(targets.length > 0) {
+                     targets.forEach(old => old.remove());
+                }
             });
 
-            // Riempimento iniziale
-            for (let i = 0; i < visibleItems.length; i++) {
-                const parent = visibleItems[i].querySelector("[data-logo-wall-target-parent]") || visibleItems[i];
-                if (pool.length > 0) parent.appendChild(pool.shift());
+            // Rigenera pool dai target originali salvati in memoria
+            pool = originalTargets.map((n) => n.cloneNode(true));
+
+            let front, rest;
+            if (shuffleFront) {
+                const shuffledAll = shuffleArray(pool);
+                front = shuffledAll.slice(0, visibleCount);
+                rest = shuffleArray(shuffledAll.slice(visibleCount));
+                pool = front.concat(rest);
+            } else {
+                front = pool.slice(0, visibleCount);
+                rest = shuffleArray(pool.slice(visibleCount));
+                pool = front.concat(rest);
             }
 
-            // Riempiamo di nuovo il pool per il ciclo
-            pool = originalTargets.map(n => {
-                const c = n.cloneNode(true);
-                c.classList.add('cloned-logo');
-                return c;
-            });
+            for (let i = 0; i < visibleCount; i++) {
+                const parent = visibleItems[i].querySelector("[data-logo-wall-target-parent]") || visibleItems[i];
+                // Svuota prima di appendere per evitare duplicati visivi
+                parent.innerHTML = '';
+                parent.appendChild(pool.shift());
+            }
 
-            tl = gsap.timeline({ repeat: -1, repeatDelay: 1.5 });
+            tl = gsap.timeline({ repeat: -1, repeatDelay: loopDelay });
             tl.call(swapNext);
             tl.play();
         }
 
         function swapNext() {
-            // Se il pool è vuoto, lo rigeneriamo
-            if (!pool.length) {
-                pool = originalTargets.map(n => {
-                    const c = n.cloneNode(true);
-                    c.classList.add('cloned-logo');
-                    return c;
-                });
-            }
+            const nowCount = items.filter(isVisible).length;
+            if (nowCount !== visibleCount) { setup(); return; }
+            if (!pool.length) return;
 
-            const idx = pattern[patternIndex % visibleItems.length];
+            const idx = pattern[patternIndex % visibleCount];
             patternIndex++;
 
             const container = visibleItems[idx];
-            // Controllo sicurezza se il container è sparito dal DOM
-            if (!container || !document.body.contains(container)) return;
+            // Safety check se l'elemento è stato rimosso dal DOM durante navigazione
+            if(!container || !document.body.contains(container)) return; 
 
-            const parent = container.querySelector("[data-logo-wall-target-parent]") || container;
+            const parent = container.querySelector("[data-logo-wall-target-parent]") || container.querySelector("*:has(> [data-logo-wall-target])") || container;
             const current = parent.querySelector("[data-logo-wall-target]");
             const incoming = pool.shift();
 
@@ -313,42 +187,84 @@ function initLogoWallCycle() {
 
             if (current) {
                 gsap.to(current, {
-                    yPercent: -50, autoAlpha: 0, duration: 0.9, ease: "expo.inOut",
-                    onComplete: () => { current.remove(); } // Non ripulshiamo in pool per semplicità, rigeneriamo sopra
+                    yPercent: -50, autoAlpha: 0, duration, ease: "expo.inOut",
+                    onComplete: () => { current.remove(); pool.push(current); },
                 });
             }
-            gsap.to(incoming, { yPercent: 0, autoAlpha: 1, duration: 0.9, delay: 0.1, ease: "expo.inOut" });
+            gsap.to(incoming, { yPercent: 0, autoAlpha: 1, duration, delay: 0.1, ease: "expo.inOut" });
         }
 
         setup();
 
         ScrollTrigger.create({
             trigger: root,
-            start: "top bottom",
-            end: "bottom top",
-            onEnter: () => tl && tl.play(),
-            onLeave: () => tl && tl.pause(),
+            start: "top bottom", end: "bottom top",
+            onEnter: () => tl && tl.play(), onLeave: () => tl && tl.pause(),
+            onEnterBack: () => tl && tl.play(), onLeaveBack: () => tl && tl.pause(),
         });
     });
 }
 
 // =============================================================================
-// 7. ALTRI MODULI (Words, Team, Filter, Flip, Scale, Circle, CMS Next)
+// 4. ABOUT GRID FLIP (TUO CODICE)
 // =============================================================================
-function initMwgEffect029() {
-    const paragraph = document.querySelector(".mwg_effect029 .is--title-w");
-    if (!paragraph) return;
-    if (paragraph.dataset.processed === "true") paragraph.innerHTML = paragraph.textContent;
-    const scrollIcon = document.querySelector(".scroll");
-    if (scrollIcon) { gsap.to(".scroll", { autoAlpha: 0, duration: 0.2, scrollTrigger: { trigger: ".mwg_effect029", start: "top top", end: "top top-=1", toggleActions: "play none reverse none" } }); }
-    paragraph.dataset.processed = "true";
-    paragraph.innerHTML = paragraph.textContent.split(" ").map(w => `<span>${w}</span>`).join(" ");
-    paragraph.querySelectorAll("span").forEach(w => w.classList.add("word" + (Math.floor(Math.random() * 3) + 1)));
-    [{ s: ".word1", x: "-0.8em" }, { s: ".word2", x: "1.6em" }, { s: ".word3", x: "-2.4em" }].forEach(c => {
-        const targets = paragraph.querySelectorAll(c.s);
-        if (targets.length) gsap.to(targets, { x: c.x, ease: "none", scrollTrigger: { trigger: paragraph, start: "top 80%", end: "bottom 60%", scrub: 0.2 } });
-    });
+function initAboutGridFlip() {
+    const grid = document.querySelector(".about__grid-wrap");
+    const items = grid ? grid.querySelectorAll(".ag__img") : [];
+    const btnBig = document.querySelector(".ag__trigger.is--big");
+    const btnSmall = document.querySelector(".ag__trigger.is--small");
+
+    if (!grid || !items.length || (!btnBig && !btnSmall)) return;
+
+    function updateButtons(isBig) {
+        if (btnBig) gsap.to(btnBig, { opacity: isBig ? 1 : 0.5, duration: 0.3, overwrite: true, pointerEvents: isBig ? "none" : "auto" });
+        if (btnSmall) gsap.to(btnSmall, { opacity: isBig ? 0.5 : 1, duration: 0.3, overwrite: true, pointerEvents: isBig ? "auto" : "none" });
+    }
+
+    // Reset stato iniziale
+    grid.classList.add("is--big");
+    grid.classList.remove("is--small");
+    updateButtons(true);
+
+    let isAnimating = false;
+
+    function forceLayoutUpdate() {
+        if (window.ScrollTrigger) ScrollTrigger.refresh();
+        if (window.lenis) window.lenis.resize();
+        window.dispatchEvent(new Event("resize"));
+    }
+
+    function switchLayout(toBig) {
+        if (isAnimating) return;
+        const targetClass = toBig ? "is--big" : "is--small";
+        if (grid.classList.contains(targetClass)) return;
+
+        const state = Flip.getState(items);
+        isAnimating = true;
+        updateButtons(toBig);
+
+        if (toBig) {
+            grid.classList.add("is--big"); grid.classList.remove("is--small");
+        } else {
+            grid.classList.add("is--small"); grid.classList.remove("is--big");
+        }
+
+        forceLayoutUpdate();
+
+        Flip.from(state, {
+            duration: 1.3, ease: "power4.inOut", nested: true, scale: true,
+            onComplete() { isAnimating = false; forceLayoutUpdate(); }
+        });
+    }
+
+    // Usa ONCLICK invece di addEventListener per evitare stack di eventi nel cambio pagina
+    if (btnBig) btnBig.onclick = () => switchLayout(true);
+    if (btnSmall) btnSmall.onclick = () => switchLayout(false);
 }
+
+// =============================================================================
+// 5. MODULI ESISTENTI (Filter, Hover, Team, Parallax, Footer, etc.)
+// =============================================================================
 
 function initCategoryCount() {
     const categories = document.querySelectorAll('[data-category-id]');
@@ -439,14 +355,12 @@ function initPsItemHover() {
         const allLines = [];
         targets.forEach(el => {
             const split = new SplitType(el, { types: "lines", lineClass: "split-line" });
-            el.splitInstance = split;
-            el.classList.add('split-done-hover');
+            el.splitInstance = split; el.classList.add('split-done-hover');
             split.lines.forEach(line => {
                 const wrapper = document.createElement('div'); wrapper.classList.add('line-wrapper'); wrapper.style.overflow = 'hidden'; wrapper.style.display = 'block'; wrapper.style.lineHeight = 'inherit';
                 line.parentNode.insertBefore(wrapper, line); wrapper.appendChild(line);
             });
-            gsap.set(split.lines, { yPercent: 105 });
-            allLines.push(...split.lines);
+            gsap.set(split.lines, { yPercent: 105 }); allLines.push(...split.lines);
         });
         if (cta) gsap.set(cta, { autoAlpha: 0 });
         const hoverTl = gsap.timeline({ paused: true });
@@ -455,23 +369,6 @@ function initPsItemHover() {
         imgWrap.onmouseenter = () => hoverTl.timeScale(1).play();
         imgWrap.onmouseleave = () => hoverTl.timeScale(2.2).reverse();
     });
-}
-
-function initAboutGridFlip() {
-    const grid = document.querySelector(".about__grid-wrap");
-    const items = grid?.querySelectorAll(".ag__img");
-    const btnBig = document.querySelector(".ag__trigger.is--big");
-    const btnSmall = document.querySelector(".ag__trigger.is--small");
-    if (!grid || !items || !items.length) return;
-    const updateButtons = (isBig) => { if (btnBig) gsap.to(btnBig, { opacity: isBig ? 1 : 0.5, pointerEvents: isBig ? "none" : "auto" }); if (btnSmall) gsap.to(btnSmall, { opacity: isBig ? 0.5 : 1, pointerEvents: isBig ? "auto" : "none" }); };
-    const switchLayout = (toBig) => {
-        const state = Flip.getState(items);
-        toBig ? (grid.classList.add("is--big"), grid.classList.remove("is--small")) : (grid.classList.add("is--small"), grid.classList.remove("is--big"));
-        updateButtons(toBig); Flip.from(state, { duration: 1.3, ease: "power4.inOut", scale: true, onComplete: () => ScrollTrigger.refresh() });
-    };
-    if (btnBig) btnBig.onclick = () => switchLayout(true);
-    if (btnSmall) btnSmall.onclick = () => switchLayout(false);
-    updateButtons(grid.classList.contains("is--big"));
 }
 
 function initWGTeamModule() {
@@ -500,80 +397,108 @@ function initWGTeamModule() {
     });
 }
 
-function initCircleType() { const circleEl = document.getElementById('circlep'); if (circleEl && typeof CircleType !== 'undefined') new CircleType(circleEl); }
-
-function initScaleOnScroll() {
-    const elements = gsap.utils.toArray("[data-scale]");
-    if (!elements.length) return;
-    elements.forEach((el) => {
-        gsap.killTweensOf(el); gsap.set(el, { scale: 1.2 });
-        gsap.to(el, { scale: 1, ease: "power2.inOut", duration: 1.5, scrollTrigger: { trigger: el, start: "top 90%", toggleActions: "play none none reverse" } });
+function initGlobalParallax() {
+    let mm = gsap.matchMedia();
+    mm.add({ isMobile: "(max-width:479px)", isMobileLandscape: "(max-width:767px)", isTablet: "(max-width:991px)", isDesktop: "(min-width:992px)" }, (ctx) => {
+        let { isMobile, isMobileLandscape, isTablet } = ctx.conditions;
+        ScrollTrigger.batch('[data-parallax="trigger"]', {
+            onEnter: batch => {
+                batch.forEach((trigger) => {
+                    let disable = trigger.getAttribute("data-parallax-disable");
+                    if ((disable === "mobile" && isMobile) || (disable === "mobileLandscape" && isMobileLandscape) || (disable === "tablet" && isTablet)) return;
+                    let target = trigger.querySelector('[data-parallax="target"]') || trigger;
+                    let direction = trigger.getAttribute("data-parallax-direction") || "vertical";
+                    let axis = direction === "horizontal" ? "xPercent" : "yPercent";
+                    let scrubVal = trigger.getAttribute("data-parallax-scrub") ? parseFloat(trigger.getAttribute("data-parallax-scrub")) : true;
+                    let startVal = parseFloat(trigger.getAttribute("data-parallax-start") || 20);
+                    let endVal = parseFloat(trigger.getAttribute("data-parallax-end") || -20);
+                    let scrollStart = trigger.getAttribute("data-parallax-scroll-start") || "top bottom";
+                    let scrollEnd = trigger.getAttribute("data-parallax-scroll-end") || "bottom top";
+                    gsap.fromTo(target, { [axis]: startVal }, { [axis]: endVal, ease: "none", scrollTrigger: { trigger: trigger, start: `clamp(${scrollStart})`, end: `clamp(${scrollEnd})`, scrub: scrubVal } });
+                });
+            }
+        });
     });
 }
 
-let cmsNextScrollHandler = null;
-function initCmsNextPowerUp() {
-    if (typeof $ === "undefined") return;
-    if (cmsNextScrollHandler) { window.removeEventListener("scroll", cmsNextScrollHandler); cmsNextScrollHandler = null; }
-    const componentsData = [];
-    $("[tr-cmsnext-element='component']").each(function () {
-        let componentEl = $(this), cmsListEl = componentEl.find(".w-dyn-items").first(), cmsItemEl = cmsListEl.children(), currentItemEl, noResultEl = componentEl.find("[tr-cmsnext-element='no-result']");
-        cmsItemEl.each(function () { if ($(this).find(".w--current").length) currentItemEl = $(this); });
-        let nextItemEl = currentItemEl ? currentItemEl.next() : $(), prevItemEl = currentItemEl ? currentItemEl.prev() : $();
-        if (componentEl.attr("tr-cmsnext-loop") === "true") { if (!nextItemEl.length) nextItemEl = cmsItemEl.first(); if (!prevItemEl.length) prevItemEl = cmsItemEl.last(); }
-        let displayEl = nextItemEl;
-        if (componentEl.attr("tr-cmsnext-showprev") === "true") displayEl = prevItemEl;
-        if (componentEl.attr("tr-cmsnext-showall") === "true") { prevItemEl.addClass("is-prev"); currentItemEl && currentItemEl.addClass("is-current"); nextItemEl.addClass("is-next"); } else { cmsItemEl.not(displayEl).remove(); if (!displayEl.length) noResultEl.show(); if (!displayEl.length && componentEl.attr("tr-cmsnext-hideempty") === "true") componentEl.hide(); }
-        const sectionEl = componentEl.closest(".section__next-project");
-        let targetItemEl = nextItemEl;
-        if (componentEl.attr("tr-cmsnext-showprev") === "true") targetItemEl = prevItemEl;
-        if (sectionEl.length && targetItemEl && targetItemEl.length) { componentsData.push({ sectionEl, componentEl, targetItemEl, triggered: false }); }
-    });
-    if (componentsData.length) {
-        let isRunning = false;
-        cmsNextScrollHandler = () => {
-            if (isRunning) return;
-            isRunning = true;
-            window.requestAnimationFrame(() => {
-                componentsData.forEach((item) => {
-                    if (item.triggered) return;
-                    if (!document.contains(item.sectionEl[0])) return;
-                    const sectionRect = item.sectionEl[0].getBoundingClientRect();
-                    const componentHeight = item.componentEl.outerHeight() || 0;
-                    if (sectionRect.bottom <= componentHeight + 1 && sectionRect.bottom >= 0) {
-                        const linkEl = item.targetItemEl.find("a").first();
-                        const href = linkEl.attr("href");
-                        if (href) { item.triggered = true; window.location.href = href; }
-                    }
-                });
-                isRunning = false;
+let splitResizeHandler = null; const splitData = new Map();
+function initSplitTextAnimations() {
+    if (typeof SplitText === "undefined") return;
+    function createSplit(el) {
+        const alreadyAnimated = el._hasAnimated === true;
+        const existing = splitData.get(el); if (existing) { existing.split.revert(); existing.st.kill(); }
+        const split = new SplitText(el, { type: "lines", mask: "lines", linesClass: "split-line" });
+        let st;
+        if (alreadyAnimated) { gsap.set(split.lines, { yPercent: 0 }); st = ScrollTrigger.create({ trigger: el, start: "top bottom", onEnter: () => gsap.set(split.lines, { yPercent: 0 }) }); }
+        else {
+            gsap.set(split.lines, { yPercent: 100 }); st = ScrollTrigger.create({
+                trigger: el, start: "top 80%", onEnter: () => { if (el._hasAnimated) return; el._hasAnimated = true; gsap.to(split.lines, { yPercent: 0, duration: 0.8, ease: "expo.out", stagger: 0.08 }); }
             });
-        };
-        window.addEventListener("scroll", cmsNextScrollHandler, { passive: true });
+        }
+        splitData.set(el, { split, st });
     }
+    const elements = gsap.utils.toArray("[data-split]"); elements.forEach(createSplit);
+    const eyebrowElements = gsap.utils.toArray(".eyebrow");
+    eyebrowElements.forEach((el) => {
+        if (el._splitInstance) el._splitInstance.revert();
+        const split = new SplitText(el, { type: "chars", mask: "chars", charsClass: "eyebrow-char" }); el._splitInstance = split; const chars = split.chars; gsap.set(chars, { opacity: 0 });
+        ScrollTrigger.create({ trigger: el, start: "top 85%", once: true, onEnter: () => { gsap.to(chars, { opacity: 1, duration: 0.05, ease: "power1.out", stagger: { amount: 0.4, from: "random" } }); } });
+    });
+    if (splitResizeHandler) window.removeEventListener("resize", splitResizeHandler); splitResizeHandler = () => { elements.forEach(createSplit); ScrollTrigger.refresh(); }; window.addEventListener("resize", splitResizeHandler);
+}
+
+function initScrambleTextAnimations() {
+    if (typeof gsap === "undefined" || typeof ScrambleTextPlugin === "undefined") return;
+    function highlightRandomChar(el) {
+        const chars = el.querySelectorAll(".char"); if (!chars.length) return;
+        chars.forEach(c => (c.style.color = "")); const rand = chars[Math.floor(Math.random() * chars.length)]; if (rand) rand.style.color = "#C3FF00";
+    }
+    document.querySelectorAll('[data-scramble-hover="link"]').forEach(target => {
+        const textEl = target.querySelector('[data-scramble-hover="target"]'); if (!textEl) return;
+        const originalText = textEl.textContent; const customHoverText = textEl.getAttribute("data-scramble-text");
+        if (typeof SplitText !== "undefined") new SplitText(textEl, { type: "words, chars", wordsClass: "word", charsClass: "char" }); else if (typeof SplitType !== "undefined") new SplitType(textEl, { types: "words, chars", wordClass: "word", charClass: "char" });
+        const newTarget = target.cloneNode(true); target.parentNode.replaceChild(newTarget, target);
+        const newTextEl = newTarget.querySelector('[data-scramble-hover="target"]');
+        newTarget.addEventListener("mouseenter", () => { gsap.to(newTextEl, { duration: 1, scrambleText: { text: customHoverText || originalText, chars: "_X" }, onUpdate: () => highlightRandomChar(newTextEl) }); });
+        newTarget.addEventListener("mouseleave", () => { gsap.to(newTextEl, { duration: 0.6, scrambleText: { text: originalText, speed: 2, chars: "X_" }, onUpdate: () => highlightRandomChar(newTextEl) }); });
+    });
+}
+
+let footerScrollHandler = null; let footerResizeObserver = null;
+function initFooterCanvasScrubber() {
+    let e = document.getElementById("footercanvas"); if (!e || !e.getContext) return;
+    if (footerScrollHandler) window.removeEventListener("scroll", footerScrollHandler); if (footerResizeObserver) { footerResizeObserver.disconnect(); footerResizeObserver = null; }
+    let t = e.getContext("2d", { alpha: !1, desynchronized: !0 }); t.imageSmoothingEnabled = !0; t.imageSmoothingQuality = "high";
+    let n = e.dataset.base || "", a = (e.dataset.ext || "jpg").toLowerCase(), i = parseInt(e.dataset.frames || "45", 10), r = parseInt(e.dataset.pad || "5", 10), l = parseInt(e.dataset.start || "0", 10); if (!n || !i) return;
+    let o = e.parentElement || e, s = 0, c = 0, f = 1, d = 0, h = 0;
+    function u() { f = Math.min(window.devicePixelRatio || 1, 2); let n = Math.max(1, Math.round(o.clientWidth * f)), a = Math.max(1, Math.round(o.clientHeight * f)); (e.width !== n || e.height !== a) && (e.width = n, e.height = a, t.setTransform(1, 0, 0, 1, 0, 0), t.scale(f, f)), s = Math.max(1, o.clientWidth), c = Math.max(1, o.clientHeight) }
+    let $ = new Map, m = new Map;
+    async function g(e) { if (e < l || e > l + (i - 1)) return null; if ($.has(e)) return $.get(e); if (m.has(e)) return m.get(e); let s = n + String(e).padStart(r, "0") + "." + a; let c = fetch(s, { cache: "force-cache" }).then(e => e.ok ? e.blob() : null).then(createImageBitmap).then(t => { if (t) { if ($.size > 60) { let key = $.keys().next().value; $.get(key)?.close?.(); $.delete(key); } $.set(e, t); m.delete(e); if ((!d || !h)) { d = t.width; h = t.height; } return t; } return null; }).catch(() => { m.delete(e); return null; }); return m.set(e, c), c; }
+    let _ = { start: null, end: null }; function b(e) { let n = Math.max(l, e - 20), a = Math.min(l + (i - 1), e + 20); if (n !== _.start || a !== _.end) { _ = { start: n, end: a }; for (let r = n; r <= a; r += 10) { setTimeout(() => { for (let e = r; e <= Math.min(a, r + 9); e++) $.has(e) || m.has(e) || g(e) }, 0) } } }
+    function v(e) { if (!e || !s || !c) return; let n = (d || e.width) / (h || e.height), a = s / c, i_draw, r_draw; n > a ? i_draw = (r_draw = c) * n : r_draw = (i_draw = s) / n; t.clearRect(0, 0, s, c); t.drawImage(e, (s - i_draw) * .5, (c - r_draw) * .5, i_draw, r_draw); }
+    let x = l, w = null, p = !1; function y() { w && v(w) } let C = (function e(t) { let n = t; for (; n && !n.classList?.contains("footer__video-scrub");) n = n.parentElement; return n || document.body })(e); u(); for (let E = l; E < l + Math.min(20, i); E++) g(E); b(l); g(l).then(e => { e && (w = e, y()) });
+    footerScrollHandler = function () { let rect = C.getBoundingClientRect(); let top = window.scrollY + rect.top; let total = Math.max(1, C.offsetHeight - window.innerHeight); let progress = Math.min(1, Math.max(0, (window.scrollY - top) / total)); let frame = Math.min(l + (i - 1), Math.max(l, Math.round(progress * (i - 1)) + l)); if (frame !== x) { b(x = frame); if (!p) { p = true; requestAnimationFrame(async () => { let img = $.get(x); if (!img) { img = await g(x); } if (img) { w = img; v(img); } p = false; }); } } }; window.addEventListener("scroll", footerScrollHandler, { passive: true }); if (typeof ResizeObserver !== "undefined") { footerResizeObserver = new ResizeObserver(() => { u(); y(); }); footerResizeObserver.observe(o); }
+}
+
+function initCircleType() { const circleEl = document.getElementById('circlep'); if (circleEl && typeof CircleType !== 'undefined') new CircleType(circleEl); }
+function initScaleOnScroll() {
+    const elements = gsap.utils.toArray("[data-scale]"); if (!elements.length) return;
+    elements.forEach((el) => { gsap.killTweensOf(el); gsap.set(el, { scale: 1.2 }); gsap.to(el, { scale: 1, ease: "power2.inOut", duration: 1.5, scrollTrigger: { trigger: el, start: "top 90%", toggleActions: "play none none reverse" } }); });
+}
+let cmsNextScrollHandler = null; function initCmsNextPowerUp() {
+    if (typeof $ === "undefined") return; if (cmsNextScrollHandler) { window.removeEventListener("scroll", cmsNextScrollHandler); cmsNextScrollHandler = null; } const componentsData = []; $("[tr-cmsnext-element='component']").each(function () { let componentEl = $(this), cmsListEl = componentEl.find(".w-dyn-items").first(), cmsItemEl = cmsListEl.children(), currentItemEl, noResultEl = componentEl.find("[tr-cmsnext-element='no-result']"); cmsItemEl.each(function () { if ($(this).find(".w--current").length) currentItemEl = $(this); }); let nextItemEl = currentItemEl ? currentItemEl.next() : $(), prevItemEl = currentItemEl ? currentItemEl.prev() : $(); if (componentEl.attr("tr-cmsnext-loop") === "true") { if (!nextItemEl.length) nextItemEl = cmsItemEl.first(); if (!prevItemEl.length) prevItemEl = cmsItemEl.last(); } let displayEl = nextItemEl; if (componentEl.attr("tr-cmsnext-showprev") === "true") displayEl = prevItemEl; if (componentEl.attr("tr-cmsnext-showall") === "true") { prevItemEl.addClass("is-prev"); currentItemEl && currentItemEl.addClass("is-current"); nextItemEl.addClass("is-next"); } else { cmsItemEl.not(displayEl).remove(); if (!displayEl.length) noResultEl.show(); if (!displayEl.length && componentEl.attr("tr-cmsnext-hideempty") === "true") componentEl.hide(); } const sectionEl = componentEl.closest(".section__next-project"); let targetItemEl = nextItemEl; if (componentEl.attr("tr-cmsnext-showprev") === "true") targetItemEl = prevItemEl; if (sectionEl.length && targetItemEl && targetItemEl.length) { componentsData.push({ sectionEl, componentEl, targetItemEl, triggered: false }); } }); if (componentsData.length) { let isRunning = false; cmsNextScrollHandler = () => { if (isRunning) return; isRunning = true; window.requestAnimationFrame(() => { componentsData.forEach((item) => { if (item.triggered) return; if (!document.contains(item.sectionEl[0])) return; const sectionRect = item.sectionEl[0].getBoundingClientRect(); const componentHeight = item.componentEl.outerHeight() || 0; if (sectionRect.bottom <= componentHeight + 1 && sectionRect.bottom >= 0) { const linkEl = item.targetItemEl.find("a").first(); const href = linkEl.attr("href"); if (href) { item.triggered = true; window.location.href = href; } } }); isRunning = false; }); }; window.addEventListener("scroll", cmsNextScrollHandler, { passive: true }); }
 }
 
 function initializeAnimations(isTransition = false) {
     const dynamicDelay = isTransition ? 1.1 : 0.2;
     const linkDelay = isTransition ? 1.2 : 0.4;
     const links = document.querySelectorAll(".link a");
-    if (links.length > 0) {
-        gsap.set(links, { y: "100%", opacity: 1 });
-        gsap.to(links, { y: "0%", duration: 1, stagger: 0.1, ease: "power4.out", delay: linkDelay });
-    }
-    const elementsToAnimate = document.querySelectorAll('[data-transition]');
-    safeSplitRevert(elementsToAnimate, 'split-done');
+    if (links.length > 0) { gsap.set(links, { y: "100%", opacity: 1 }); gsap.to(links, { y: "0%", duration: 1, stagger: 0.1, ease: "power4.out", delay: linkDelay }); }
+    const elementsToAnimate = document.querySelectorAll('[data-transition]'); safeSplitRevert(elementsToAnimate, 'split-done');
     elementsToAnimate.forEach(el => {
-        const split = new SplitType(el, { types: 'lines', lineClass: 'line-inner' });
-        el.splitInstance = split;
-        split.lines.forEach(line => {
-            const wrapper = document.createElement('div'); wrapper.classList.add('line-wrapper'); wrapper.style.overflow = 'hidden'; wrapper.style.display = 'block'; line.parentNode.insertBefore(wrapper, line); wrapper.appendChild(line);
-        });
-        const spans = el.querySelectorAll(".line-inner");
-        gsap.set(spans, { y: "110%" });
-        el.style.opacity = "1";
-        el.classList.add('split-done');
-        gsap.to(spans, { y: "0%", duration: 1.2, stagger: 0.08, ease: "power3.out", delay: dynamicDelay });
+        const split = new SplitType(el, { types: 'lines', lineClass: 'line-inner' }); el.splitInstance = split;
+        split.lines.forEach(line => { const wrapper = document.createElement('div'); wrapper.classList.add('line-wrapper'); wrapper.style.overflow = 'hidden'; wrapper.style.display = 'block'; line.parentNode.insertBefore(wrapper, line); wrapper.appendChild(line); });
+        const spans = el.querySelectorAll(".line-inner"); gsap.set(spans, { y: "110%" }); el.style.opacity = "1"; el.classList.add('split-done'); gsap.to(spans, { y: "0%", duration: 1.2, stagger: 0.08, ease: "power3.out", delay: dynamicDelay });
     });
 }
 
@@ -581,9 +506,7 @@ function initializeAnimations(isTransition = false) {
 // NAVIGAZIONE E RESET
 // =============================================================================
 function syncHead(newDoc) {
-    const currentHead = document.head;
-    const newStyles = newDoc.head.querySelectorAll('link[rel="stylesheet"], style');
-    const currentStylesMap = new Set();
+    const currentHead = document.head; const newStyles = newDoc.head.querySelectorAll('link[rel="stylesheet"], style'); const currentStylesMap = new Set();
     document.head.querySelectorAll('link[rel="stylesheet"], style').forEach(s => { currentStylesMap.add(s.href || s.innerText); });
     newStyles.forEach(style => { if (!currentStylesMap.has(style.href || style.innerText)) { currentHead.appendChild(style.cloneNode(true)); } });
 }
@@ -594,23 +517,11 @@ if (window.navigation) {
         event.intercept({
             handler: async () => {
                 try {
-                    const response = await fetch(event.destination.url);
-                    const text = await response.text();
-                    const doc = new DOMParser().parseFromString(text, "text/html");
-                    syncHead(doc);
-                    if (document.startViewTransition) {
-                        const transition = document.startViewTransition(() => {
-                            document.body.innerHTML = doc.body.innerHTML;
-                            document.title = doc.title;
-                        });
-                        transition.ready.then(() => finalizePage(true));
-                    } else {
-                        document.body.innerHTML = doc.body.innerHTML;
-                        finalizePage(true);
-                    }
+                    const response = await fetch(event.destination.url); const text = await response.text(); const doc = new DOMParser().parseFromString(text, "text/html"); syncHead(doc);
+                    if (document.startViewTransition) { const transition = document.startViewTransition(() => { document.body.innerHTML = doc.body.innerHTML; document.title = doc.title; }); transition.ready.then(() => finalizePage(true)); }
+                    else { document.body.innerHTML = doc.body.innerHTML; finalizePage(true); }
                 } catch (err) { window.location.href = event.destination.url; }
-            },
-            scroll: "manual"
+            }, scroll: "manual"
         });
     });
 }
@@ -623,12 +534,17 @@ function finalizePage(isTransition = false) {
     if (window.Webflow) { window.Webflow.destroy(); window.Webflow.ready(); window.Webflow.require('ix2').init(); }
     if (window.lenis) { window.lenis.scrollTo(0, { immediate: true }); window.lenis.resize(); }
 
+    // Inizializza TUTTI i moduli (Ordine non critico ma importante)
     initCategoryCount();
     initGridToggle();
     initMutliFilterSetupMultiMatch();
     initPsItemHover();
+    
+    // Le tue 3 funzioni specifiche, aggiornate e sicure
     initMwgEffect029();
     initLogoWallCycle();
+    initAboutGridFlip();
+
     initGlobalParallax();
     initSplitTextAnimations();
     initScrambleTextAnimations();
@@ -638,7 +554,6 @@ function finalizePage(isTransition = false) {
     initCmsNextPowerUp();
 
     if (typeof initWGTeamModule === "function") initWGTeamModule();
-    if (typeof initAboutGridFlip === "function") initAboutGridFlip();
 
     initializeAnimations(isTransition);
     setTimeout(() => { ScrollTrigger.refresh(); }, 400);
