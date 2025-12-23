@@ -1,5 +1,6 @@
 /**
- * WEBFLOW ULTIMATE ENGINE - FIXED FILTERS & HOVERS
+ * WEBFLOW ULTIMATE ENGINE - FINAL STABLE
+ * Fixes: Event Listener Accumulation & SplitType Recursion
  */
 
 // 1. REGISTRAZIONE PLUGIN
@@ -7,7 +8,31 @@ if (typeof gsap !== "undefined") {
     gsap.registerPlugin(ScrollTrigger, Flip);
 }
 
-// --- 2. ANIMAZIONI INGRESSO (data-transition) ---
+// =============================================================================
+// FUNZIONI DI SUPPORTO GLOBAL (Safe Revert)
+// =============================================================================
+function safeSplitRevert(elements, className) {
+    if (!elements.length) return;
+    elements.forEach(el => {
+        // Se esiste già un'istanza o una classe che indica lo split, proviamo a pulire
+        if (el.splitInstance) {
+            el.splitInstance.revert();
+            el.splitInstance = null;
+        }
+        el.classList.remove(className);
+        // Pulizia manuale extra per sicurezza (rimuove wrapper residui)
+        const wrappers = el.querySelectorAll('.line-wrapper');
+        wrappers.forEach(w => {
+            const parent = w.parentNode;
+            while (w.firstChild) parent.insertBefore(w.firstChild, w);
+            parent.removeChild(w);
+        });
+    });
+}
+
+// =============================================================================
+// 2. ANIMAZIONI INGRESSO (data-transition)
+// =============================================================================
 function initializeAnimations(isTransition = false) {
     const dynamicDelay = isTransition ? 1.1 : 0.2;
     const linkDelay = isTransition ? 1.2 : 0.4;
@@ -19,9 +44,14 @@ function initializeAnimations(isTransition = false) {
     }
 
     const elementsToAnimate = document.querySelectorAll('[data-transition]');
+    
+    // PULIZIA PREVENTIVA: Se torniamo indietro, resettiamo gli elementi
+    safeSplitRevert(elementsToAnimate, 'split-done');
+
     elementsToAnimate.forEach(el => {
-        if (el.classList.contains('split-done')) return;
         const split = new SplitType(el, { types: 'lines', lineClass: 'line-inner' });
+        el.splitInstance = split; // Salviamo l'istanza per il revert futuro
+
         split.lines.forEach(line => {
             const wrapper = document.createElement('div');
             wrapper.classList.add('line-wrapper');
@@ -31,6 +61,7 @@ function initializeAnimations(isTransition = false) {
             wrapper.style.display = 'block';
             line.style.display = 'block';
         });
+
         const spans = el.querySelectorAll(".line-inner");
         gsap.set(spans, { y: "110%" });
         el.classList.add('split-done');
@@ -39,15 +70,38 @@ function initializeAnimations(isTransition = false) {
     });
 }
 
-// --- 3. SISTEMA MULTI-FILTER (FIXED PER VIEW TRANSITIONS) ---
+// =============================================================================
+// 3. SISTEMA MULTI-FILTER (CORRETTO)
+// =============================================================================
+// Variabile globale per tenere traccia dell'handler di resize attivo
+let currentResizeHandler = null;
+
 function initMutliFilterSetupMultiMatch() {
     const groups = [...document.querySelectorAll('[data-filter-group]')];
     if (!groups.length) return;
 
+    // Rimuoviamo il vecchio listener resize se esiste per evitare duplicati
+    if (currentResizeHandler) {
+        window.removeEventListener('resize', currentResizeHandler);
+        currentResizeHandler = null;
+    }
+
+    // Funzione di resize unica che cicla su tutti i gruppi attivi
+    currentResizeHandler = () => {
+        groups.forEach(group => {
+            // Triggeriamo un "repaint" fittizio
+            const activeBtn = group.querySelector('[data-filter-target][data-filter-status="active"]');
+            if (activeBtn) activeBtn.click(); // Simula click per ricalcolare layout
+        });
+    };
+    window.addEventListener('resize', currentResizeHandler);
+
     groups.forEach(group => {
-        // Rimuoviamo listener precedenti clonando il nodo (evita accumulo eventi)
-        const newGroup = group.cloneNode(true);
-        group.parentNode.replaceChild(newGroup, group);
+        // Cloniamo il nodo per eliminare TUTTI i vecchi listener (click, etc)
+        const oldGroup = group;
+        const newGroup = oldGroup.cloneNode(true);
+        oldGroup.parentNode.replaceChild(newGroup, oldGroup);
+        // Da ora usiamo newGroup
 
         const targetMatch = (newGroup.getAttribute('data-filter-target-match') || 'multi').trim().toLowerCase();
         const nameMatch = (newGroup.getAttribute('data-filter-name-match') || 'multi').trim().toLowerCase();
@@ -68,13 +122,15 @@ function initMutliFilterSetupMultiMatch() {
             const raw = (el.getAttribute('data-filter-name') || '').trim().toLowerCase();
             const tokens = raw ? raw.split(/\s+/).filter(Boolean) : [];
             itemTokens.set(el, new Set(tokens));
+            // Reset status visivo
             el.setAttribute('data-filter-status', 'active');
+            el.removeAttribute('data-grid-pos');
         });
 
         let activeTags = targetMatch === 'single' ? null : new Set(['all']);
 
-        const paint = (rawTarget, isResize = false) => {
-            if (!isResize && rawTarget) {
+        const paint = (rawTarget) => {
+            if (rawTarget) {
                 const target = rawTarget.trim().toLowerCase();
                 if (target === 'all' || target === 'reset') {
                     if (targetMatch === 'single') activeTags = null;
@@ -103,6 +159,7 @@ function initMutliFilterSetupMultiMatch() {
                 if (shouldShow) {
                     visibleCounter++;
                     if (isDesktop) el.setAttribute('data-grid-pos', ((visibleCounter - 1) % 9) + 1);
+                    else el.removeAttribute('data-grid-pos');
                     el.setAttribute('data-filter-status', 'active');
                 } else {
                     el.removeAttribute('data-grid-pos');
@@ -116,18 +173,25 @@ function initMutliFilterSetupMultiMatch() {
                          (targetMatch === 'single' ? activeTags === t : activeTags.has(t));
                 btn.setAttribute('data-filter-status', on ? 'active' : 'not-active');
             });
+            
+            // Importante: forza il refresh di ScrollTrigger perché l'altezza della pagina è cambiata
+            ScrollTrigger.refresh();
         };
 
-        newGroup.addEventListener('click', e => {
+        // Usiamo onclick invece di addEventListener per evitare stack
+        newGroup.onclick = (e) => {
             const btn = e.target.closest('[data-filter-target]');
             if (btn) paint(btn.getAttribute('data-filter-target'));
-        });
+        };
 
+        // Init Paint
         paint('all');
     });
 }
 
-// --- 4. ANIMAZIONI GSAP HOVER (FIXED PER VIEW TRANSITIONS) ---
+// =============================================================================
+// 4. ANIMAZIONI GSAP HOVER (CORRETTO CON REVERT)
+// =============================================================================
 function initPsItemHover() {
     const psItems = document.querySelectorAll(".ps__item");
     if (!psItems.length) return;
@@ -135,22 +199,21 @@ function initPsItemHover() {
     psItems.forEach((item) => {
         const imgWrap = item.querySelector(".ps__item-img");
         const cta = item.querySelector(".projects__cta");
-        const splitTargets = item.querySelectorAll("[data-split-ps]");
+        const targets = item.querySelectorAll("[data-split-ps]");
 
-        if (!imgWrap || !splitTargets.length) return;
+        if (!imgWrap || !targets.length) return;
 
-        // Pulizia se già processato per evitare split multipli
-        splitTargets.forEach(el => {
-            if (el.classList.contains('split-done-hover')) return;
-        });
+        // 1. REVERT: Puliamo eventuali split precedenti se esistono
+        safeSplitRevert(targets, 'split-done-hover');
 
         const allLines = [];
-        splitTargets.forEach((el) => {
-            // Usiamo SplitType per compatibilità totale
+        targets.forEach(el => {
             const split = new SplitType(el, { types: "lines", lineClass: "split-line" });
+            el.splitInstance = split; // Salviamo istanza
+            el.classList.add('split-done-hover');
+            
             gsap.set(split.lines, { yPercent: 105 });
             allLines.push(...split.lines);
-            el.classList.add('split-done-hover');
         });
 
         if (cta) gsap.set(cta, { autoAlpha: 0 });
@@ -159,13 +222,167 @@ function initPsItemHover() {
         hoverTl.to(allLines, { yPercent: 0, duration: 0.8, ease: "expo.out", stagger: 0.05 }, 0);
         if (cta) hoverTl.to(cta, { autoAlpha: 1, duration: 0.4, ease: "power2.out" }, 0);
 
-        // Usiamo onmouseenter/leave per sovrascrivere listener precedenti
+        // Usiamo onmouseenter/onmouseleave diretti per sovrascrivere i vecchi
         imgWrap.onmouseenter = () => hoverTl.timeScale(1).play();
         imgWrap.onmouseleave = () => hoverTl.timeScale(2.2).reverse();
     });
 }
 
-// --- 5. NAVIGAZIONE & HEAD SYNC ---
+// =============================================================================
+// 5. ALTRI MODULI (Words, Team, Wall, Count, Flip, Toggle)
+// =============================================================================
+function initMwgEffect029() {
+    const triggerEl = document.querySelector(".mwg_effect029");
+    const paragraph = document.querySelector(".mwg_effect029 .is--title-w");
+    
+    if (!triggerEl || !paragraph) return;
+    
+    // Reset se necessario
+    if(paragraph.dataset.processed === "true") {
+        paragraph.innerHTML = paragraph.textContent; // Reset brutale del contenuto
+        paragraph.dataset.processed = "false";
+    }
+
+    const scrollIcon = document.querySelector(".scroll");
+    if (scrollIcon) {
+        gsap.to(scrollIcon, {
+            autoAlpha: 0,
+            duration: 0.2,
+            scrollTrigger: {
+                trigger: triggerEl,
+                start: "top top",
+                end: "top top-=1",
+                toggleActions: "play none reverse none",
+            },
+        });
+    }
+
+    paragraph.dataset.processed = "true";
+    paragraph.innerHTML = paragraph.textContent.split(" ").map(w => `<span>${w}</span>`).join(" ");
+    const words = paragraph.querySelectorAll("span");
+    words.forEach(w => w.classList.add("word" + (Math.floor(Math.random() * 3) + 1)));
+
+    const configs = [{ sel: ".word1", x: "-0.8em" }, { sel: ".word2", x: "1.6em" }, { sel: ".word3", x: "-2.4em" }];
+    configs.forEach(conf => {
+        const targets = paragraph.querySelectorAll(conf.sel);
+        if(targets.length) {
+            gsap.to(targets, { x: conf.x, ease: "none", scrollTrigger: { trigger: paragraph, start: "top 80%", end: "bottom 60%", scrub: 0.2 }});
+        }
+    });
+}
+
+function initCategoryCount() {
+    const categories = document.querySelectorAll('[data-category-id]');
+    const projects = document.querySelectorAll('[data-project-category]');
+    if (!categories.length) return;
+    categories.forEach(category => {
+        const catID = category.getAttribute('data-category-id');
+        const countEl = category.querySelector('[data-category-count]');
+        if (countEl) countEl.textContent = [...projects].filter(p => p.getAttribute('data-project-category') === catID).length;
+    });
+}
+
+function initGridToggle() {
+    const triggers = document.querySelectorAll('.tt__left, .tt__right');
+    const contents = document.querySelectorAll('.ps__list-wrap, .ll__wrap');
+    if (!triggers.length) return;
+    triggers.forEach(trigger => {
+        trigger.onclick = function() {
+            const gridId = this.getAttribute('data-grid');
+            triggers.forEach(t => t.classList.remove('active'));
+            contents.forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            contents.forEach(c => { if (c.getAttribute('data-grid') === gridId) c.classList.add('active'); });
+            ScrollTrigger.refresh();
+        };
+    });
+}
+
+function initLogoWallCycle() {
+    const roots = document.querySelectorAll("[data-logo-wall-cycle-init]");
+    roots.forEach((root) => {
+        // Reset rapido se esiste già
+        if (root.dataset.initialized === "true") return; 
+        root.dataset.initialized = "true";
+        
+        const list = root.querySelector("[data-logo-wall-list]");
+        const items = Array.from(list?.querySelectorAll("[data-logo-wall-item]") || []);
+        if (!items.length) return;
+        const original = items.map(i => i.querySelector("[data-logo-wall-target]")).filter(Boolean);
+        let tl, pool = [], visible = [];
+        const setup = () => {
+            if (tl) tl.kill();
+            visible = items.filter(el => window.getComputedStyle(el).display !== "none");
+            pool = original.map(n => n.cloneNode(true)).sort(() => Math.random() - 0.5);
+            visible.forEach(v => { v.innerHTML = ''; v.appendChild(pool.shift()); });
+            tl = gsap.timeline({ repeat: -1, repeatDelay: 1.5 });
+            tl.call(() => {
+                const idx = Math.floor(Math.random() * visible.length);
+                const parent = visible[idx];
+                const current = parent.querySelector("[data-logo-wall-target]");
+                const incoming = pool.shift();
+                if (!incoming || !current) return;
+                gsap.set(incoming, { yPercent: 50, autoAlpha: 0 });
+                parent.appendChild(incoming);
+                gsap.to(current, { yPercent: -50, autoAlpha: 0, duration: 0.9, onComplete: () => { current.remove(); pool.push(current); }});
+                gsap.to(incoming, { yPercent: 0, autoAlpha: 1, duration: 0.9 });
+            });
+        };
+        setup();
+        ScrollTrigger.create({ trigger: root, onEnter: () => tl.play(), onLeave: () => tl.pause() });
+    });
+}
+
+function initAboutGridFlip() {
+    const grid = document.querySelector(".about__grid-wrap");
+    const items = grid?.querySelectorAll(".ag__img");
+    const btnBig = document.querySelector(".ag__trigger.is--big");
+    const btnSmall = document.querySelector(".ag__trigger.is--small");
+    if (!grid || !items || !items.length) return;
+    const updateButtons = (isBig) => {
+        if (btnBig) gsap.to(btnBig, { opacity: isBig ? 1 : 0.5, pointerEvents: isBig ? "none" : "auto" });
+        if (btnSmall) gsap.to(btnSmall, { opacity: isBig ? 0.5 : 1, pointerEvents: isBig ? "auto" : "none" });
+    };
+    const switchLayout = (toBig) => {
+        const state = Flip.getState(items);
+        toBig ? (grid.classList.add("is--big"), grid.classList.remove("is--small")) : (grid.classList.add("is--small"), grid.classList.remove("is--big"));
+        updateButtons(toBig);
+        Flip.from(state, { duration: 1.3, ease: "power4.inOut", scale: true, onComplete: () => ScrollTrigger.refresh() });
+    };
+    if (btnBig) btnBig.onclick = () => switchLayout(true);
+    if (btnSmall) btnSmall.onclick = () => switchLayout(false);
+    updateButtons(grid.classList.contains("is--big"));
+}
+
+function initWGTeamModule() {
+  const nameItems = gsap.utils.toArray(".wg__collection-name-item");
+  const imageItems = gsap.utils.toArray(".wg__item");
+  const roleItems = gsap.utils.toArray(".wg__right-role-wrap");
+  const namesWrapper = document.querySelector(".wg__collection-name-list");
+  if (!nameItems.length) return;
+  const isMobile = window.matchMedia("(max-width: 767px)").matches;
+  const show = (order, y) => {
+    gsap.set(nameItems, { opacity: 0.5 });
+    const activeN = nameItems.find(el => el.dataset.order === order);
+    if (activeN) gsap.set(activeN, { opacity: 1 });
+    imageItems.forEach(img => gsap.set(img, { autoAlpha: img.dataset.order === order ? 1 : 0 }));
+    if (!isMobile && namesWrapper) {
+        roleItems.forEach(role => {
+            const isMatch = role.dataset.order === order;
+            gsap.set(role, { autoAlpha: isMatch ? 1 : 0 });
+            if (isMatch) gsap.set(role, { y: y - namesWrapper.getBoundingClientRect().top });
+        });
+    }
+  };
+  nameItems.forEach(el => {
+    el.onmouseenter = (e) => { if(!isMobile) show(el.dataset.order, e.clientY); };
+    el.onclick = () => { if(isMobile) { show(el.dataset.order); const r = el.querySelector(".wg__right-role-wrap-mobile"); if(r) r.style.display = "block"; }};
+  });
+}
+
+// =============================================================================
+// 6. NAVIGAZIONE (VIEW TRANSITIONS + HEAD SYNC)
+// =============================================================================
 function syncHead(newDoc) {
     const currentHead = document.head;
     const newStyles = newDoc.head.querySelectorAll('link[rel="stylesheet"], style');
@@ -189,7 +406,9 @@ if (window.navigation) {
                     const response = await fetch(event.destination.url);
                     const text = await response.text();
                     const doc = new DOMParser().parseFromString(text, "text/html");
+                    
                     syncHead(doc);
+
                     if (document.startViewTransition) {
                         const transition = document.startViewTransition(() => {
                             document.body.innerHTML = doc.body.innerHTML;
@@ -207,33 +426,36 @@ if (window.navigation) {
     });
 }
 
-// --- 6. FINALIZE & RESET ---
+// =============================================================================
+// 7. FINALIZE & RESET (MASTER CONTROLLER)
+// =============================================================================
 function finalizePage(isTransition = false) {
     window.scrollTo(0, 0);
+    
+    // 1. Kill GSAP/ScrollTrigger
     ScrollTrigger.getAll().forEach(t => t.kill());
     gsap.killTweensOf("*");
 
-    if (window.Webflow) {
-        window.Webflow.destroy();
-        window.Webflow.ready();
-        window.Webflow.require('ix2').init();
-    }
-
-    // Riavvio moduli
+    // 2. Reset Webflow & Lenis
+    if (window.Webflow) { window.Webflow.destroy(); window.Webflow.ready(); window.Webflow.require('ix2').init(); }
+    if (window.lenis) { window.lenis.scrollTo(0, { immediate: true }); window.lenis.resize(); }
+    
+    // 3. Esecuzione Moduli
+    initMwgEffect029();
+    initLogoWallCycle();
+    initAboutGridFlip();
+    initCategoryCount();
+    initGridToggle();
     initMutliFilterSetupMultiMatch();
     initPsItemHover();
+    initWGTeamModule();
     
-    // Altri moduli (Words, Team, etc.)
-    if (typeof initMwgEffect029 === "function") initMwgEffect029();
-    if (typeof initCategoryCount === "function") initCategoryCount();
-    if (typeof initGridToggle === "function") initGridToggle();
-
+    // 4. Animazioni ingresso
     initializeAnimations(isTransition);
+    
+    // 5. Refresh finale (ritardato per sicurezza)
     setTimeout(() => { ScrollTrigger.refresh(); }, 400);
 }
 
+// Avvio Iniziale
 window.addEventListener("DOMContentLoaded", () => finalizePage(false));
-window.addEventListener("resize", () => {
-    // Refresh filtri su resize globale
-    if (document.querySelector('[data-filter-group]')) initMutliFilterSetupMultiMatch();
-});
