@@ -1,6 +1,6 @@
 /**
- * WEBFLOW ULTIMATE ENGINE
- * Features: Navigation, Filters, Team, Words (Fixed), Wall, Flip, Scale, Circle, CMS Next, Parallax, Scramble, Footer Canvas
+ * WEBFLOW ULTIMATE ENGINE - FINAL PRODUCTION
+ * Features: Navigation, Filters, Team, Words, Flip, Scale, Circle, CMS Next, Parallax, Scramble, Footer, LOGO WALL
  */
 
 // 1. REGISTRAZIONE PLUGIN GLOBALE
@@ -32,7 +32,173 @@ function safeSplitRevert(elements, className) {
 }
 
 // =============================================================================
-// 2. MWG EFFECT 029 – SCROLL WORDS (TUO CODICE NUOVO INTEGRATO)
+// 2. LOGO WALL CYCLE (TUA NUOVA FUNZIONE INTEGRATA)
+// =============================================================================
+function initLogoWallCycle() {
+    // 1. Definizioni base
+    const loopDelay = 1.5;   // Loop Duration
+    const duration  = 0.9;   // Animation Duration
+
+    // 2. Selezione elementi
+    document.querySelectorAll('[data-logo-wall-cycle-init]').forEach(root => {
+        // Evitiamo di re-inizializzare se già attivo (opzionale, ma sicuro per view transitions)
+        // if (root.dataset.initialized === 'true') return;
+        // root.dataset.initialized = 'true';
+
+        const list   = root.querySelector('[data-logo-wall-list]');
+        // Se non c'è la lista, esci
+        if (!list) return;
+
+        const items  = Array.from(list.querySelectorAll('[data-logo-wall-item]'));
+        if (!items.length) return;
+
+        const shuffleFront = root.getAttribute('data-logo-wall-shuffle') !== 'false';
+        
+        // Mappa dei target originali
+        const originalTargets = items
+            .map(item => item.querySelector('[data-logo-wall-target]'))
+            .filter(Boolean);
+
+        let visibleItems   = [];
+        let visibleCount   = 0;
+        let pool           = [];
+        let pattern        = [];
+        let patternIndex   = 0;
+        let tl;
+
+        function isVisible(el) {
+            return window.getComputedStyle(el).display !== 'none';
+        }
+
+        function shuffleArray(arr) {
+            const a = arr.slice();
+            for (let i = a.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [a[i], a[j]] = [a[j], a[i]];
+            }
+            return a;
+        }
+
+        function setup() {
+            if (tl) {
+                tl.kill();
+            }
+            visibleItems = items.filter(isVisible);
+            visibleCount = visibleItems.length;
+
+            pattern = shuffleArray(
+                Array.from({ length: visibleCount }, (_, i) => i)
+            );
+            patternIndex = 0;
+
+            // Rimuovi tutti i target precedentemente iniettati per pulizia
+            items.forEach(item => {
+                item.querySelectorAll('[data-logo-wall-target]').forEach(old => old.remove());
+            });
+
+            // Ricrea il pool dai nodi originali
+            pool = originalTargets.map(n => n.cloneNode(true));
+
+            let front, rest;
+            if (shuffleFront) {
+                const shuffledAll = shuffleArray(pool);
+                front = shuffledAll.slice(0, visibleCount);
+                rest  = shuffleArray(shuffledAll.slice(visibleCount));
+            } else {
+                front = pool.slice(0, visibleCount);
+                rest  = shuffleArray(pool.slice(visibleCount));
+            }
+            pool = front.concat(rest);
+
+            // Popola inizialmente gli slot visibili
+            for (let i = 0; i < visibleCount; i++) {
+                const parent =
+                    visibleItems[i].querySelector('[data-logo-wall-target-parent]') ||
+                    visibleItems[i];
+                // Svuota prima di appendere per sicurezza
+                parent.innerHTML = '';
+                parent.appendChild(pool.shift());
+            }
+
+            tl = gsap.timeline({ repeat: -1, repeatDelay: loopDelay });
+            tl.call(swapNext);
+            tl.play();
+        }
+
+        function swapNext() {
+            const nowCount = items.filter(isVisible).length;
+            if (nowCount !== visibleCount) {
+                setup();
+                return;
+            }
+            if (!pool.length) return;
+
+            const idx = pattern[patternIndex % visibleCount];
+            patternIndex++;
+
+            const container = visibleItems[idx];
+            // Safety check se l'elemento è stato rimosso
+            if (!container) return;
+
+            const parent =
+                container.querySelector('[data-logo-wall-target-parent]') ||
+                container.querySelector('*:has(> [data-logo-wall-target])') ||
+                container;
+            
+            const existing = parent.querySelectorAll('[data-logo-wall-target]');
+            if (existing.length > 1) return;
+
+            const current  = parent.querySelector('[data-logo-wall-target]');
+            const incoming = pool.shift();
+
+            gsap.set(incoming, { yPercent: 50, autoAlpha: 0 });
+            parent.appendChild(incoming);
+
+            if (current) {
+                gsap.to(current, {
+                    yPercent: -50,
+                    autoAlpha: 0,
+                    duration,
+                    ease: "expo.inOut",
+                    onComplete: () => {
+                        current.remove();
+                        pool.push(current);
+                    }
+                });
+            }
+
+            gsap.to(incoming, {
+                yPercent: 0,
+                autoAlpha: 1,
+                duration,
+                delay: 0.1,
+                ease: "expo.inOut"
+            });
+        }
+
+        setup();
+
+        ScrollTrigger.create({
+            trigger: root,
+            start: 'top bottom',
+            end: 'bottom top',
+            onEnter:      () => tl && tl.play(),
+            onLeave:      () => tl && tl.pause(),
+            onEnterBack:  () => tl && tl.play(),
+            onLeaveBack:  () => tl && tl.pause()
+        });
+
+        // Event listener per tab visibility
+        const visibilityHandler = () => document.hidden ? (tl && tl.pause()) : (tl && tl.play());
+        document.addEventListener('visibilitychange', visibilityHandler);
+        
+        // (Opzionale) Rimuovi listener se l'elemento viene rimosso dal DOM in futuro
+        // per ora lo lasciamo così com'era nel tuo codice originale
+    });
+}
+
+// =============================================================================
+// 3. MWG EFFECT 029 – SCROLL WORDS
 // =============================================================================
 function wrapWordsInSpan(element) {
     const text = element.textContent;
@@ -43,19 +209,14 @@ function wrapWordsInSpan(element) {
 }
 
 function initMwgEffect029() {
-    // Selettore doppio per sicurezza (.paragraph dal tuo snippet, .is--title-w dal vecchio)
     const paragraph = document.querySelector('.mwg_effect029 .paragraph, .mwg_effect029 .is--title-w');
-    
-    // Se non c'è l'elemento, usciamo subito per evitare errori
     if (!paragraph) return;
 
-    // Reset se stiamo tornando sulla pagina per evitare span dentro span
     if (paragraph.dataset.processed === "true") {
         paragraph.innerHTML = paragraph.textContent;
     }
     paragraph.dataset.processed = "true";
 
-    // Animazione Scroll Icon
     gsap.to('.scroll', {
         autoAlpha: 0,
         duration: 0.2,
@@ -67,16 +228,13 @@ function initMwgEffect029() {
         }
     });
 
-    // Avvolge le parole
     wrapWordsInSpan(paragraph);
 
-    // Assegna classi random
     const words = paragraph.querySelectorAll('span');
     words.forEach(word => {
         word.classList.add('word' + Math.floor(Math.random() * 4));
     });
 
-    // Animazioni GSAP (Esattamente come da tuo snippet)
     document.querySelectorAll('.mwg_effect029 .word1').forEach(el => {
         gsap.to(el, {
             x: '-0.8em',
@@ -113,141 +271,6 @@ function initMwgEffect029() {
                 end: 'bottom 60%',
                 scrub: 0.2
             }
-        });
-    });
-}
-
-// =============================================================================
-// 3. LOGO WALL CYCLE (VERSIONE CORRETTA)
-// =============================================================================
-function initLogoWallCycle() {
-    if (typeof gsap === "undefined" || typeof ScrollTrigger === "undefined") return;
-
-    const loopDelay = 1.5; 
-    const duration = 0.9; 
-
-    document.querySelectorAll("[data-logo-wall-cycle-init]").forEach((root) => {
-        const list = root.querySelector("[data-logo-wall-list]");
-        if (!list) return;
-
-        const items = Array.from(list.querySelectorAll("[data-logo-wall-item]"));
-        if (!items.length) return;
-
-        const shuffleFront = root.getAttribute("data-logo-wall-shuffle") !== "false";
-        
-        // Prendiamo solo i target originali, escludendo cloni precedenti
-        const originalTargets = items.map((item) => {
-            return item.querySelector("[data-logo-wall-target]:not(.cloned-logo)");
-        }).filter(Boolean);
-
-        let visibleItems = [], visibleCount = 0, pool = [], pattern = [], patternIndex = 0, tl;
-
-        function isVisible(el) { return window.getComputedStyle(el).display !== "none"; }
-
-        function shuffleArray(arr) {
-            const a = arr.slice();
-            for (let i = a.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [a[i], a[j]] = [a[j], a[i]];
-            }
-            return a;
-        }
-
-        function setup() {
-            if (tl) tl.kill();
-
-            visibleItems = items.filter(isVisible);
-            visibleCount = visibleItems.length;
-            pattern = shuffleArray(Array.from({ length: visibleCount }, (_, i) => i));
-            patternIndex = 0;
-
-            // PULIZIA TOTALE: Svuota i contenitori padre
-            items.forEach((item) => {
-                const parent = item.querySelector("[data-logo-wall-target-parent]") || item;
-                parent.innerHTML = '';
-            });
-
-            // Creazione Pool iniziale (con classe cloned per riconoscerli)
-            pool = originalTargets.map((n) => {
-                const c = n.cloneNode(true);
-                c.classList.add('cloned-logo');
-                return c;
-            });
-
-            let front, rest;
-            if (shuffleFront) {
-                const shuffledAll = shuffleArray(pool);
-                front = shuffledAll.slice(0, visibleCount);
-                rest = shuffleArray(shuffledAll.slice(visibleCount));
-                pool = front.concat(rest);
-            } else {
-                front = pool.slice(0, visibleCount);
-                rest = shuffleArray(pool.slice(visibleCount));
-                pool = front.concat(rest);
-            }
-
-            for (let i = 0; i < visibleCount; i++) {
-                const parent = visibleItems[i].querySelector("[data-logo-wall-target-parent]") || visibleItems[i];
-                parent.appendChild(pool.shift());
-            }
-
-            tl = gsap.timeline({ repeat: -1, repeatDelay: loopDelay });
-            tl.call(swapNext);
-            tl.play();
-        }
-
-        function swapNext() {
-            const nowCount = items.filter(isVisible).length;
-            if (nowCount !== visibleCount) { setup(); return; }
-            
-            // Se pool vuoto, rigenera
-            if (!pool.length) {
-                 pool = originalTargets.map((n) => {
-                    const c = n.cloneNode(true);
-                    c.classList.add('cloned-logo');
-                    return c;
-                });
-            }
-
-            const idx = pattern[patternIndex % visibleCount];
-            patternIndex++;
-
-            const container = visibleItems[idx];
-            if(!container) return; // Safety check
-
-            const parent = container.querySelector("[data-logo-wall-target-parent]") || container;
-            const existing = parent.querySelectorAll("[data-logo-wall-target]");
-            
-            // Evita accumulo se l'animazione precedente non è finita
-            if (existing.length > 1) return;
-
-            const current = parent.querySelector("[data-logo-wall-target]");
-            const incoming = pool.shift();
-
-            gsap.set(incoming, { yPercent: 50, autoAlpha: 0 });
-            parent.appendChild(incoming);
-
-            if (current) {
-                gsap.to(current, {
-                    yPercent: -50, autoAlpha: 0, duration, ease: "expo.inOut",
-                    onComplete: () => { current.remove(); pool.push(current); },
-                });
-            }
-            gsap.to(incoming, { yPercent: 0, autoAlpha: 1, duration, delay: 0.1, ease: "expo.inOut" });
-        }
-
-        setup();
-
-        ScrollTrigger.create({
-            trigger: root,
-            start: "top bottom", end: "bottom top",
-            onEnter: () => tl && tl.play(), onLeave: () => tl && tl.pause(),
-            onEnterBack: () => tl && tl.play(), onLeaveBack: () => tl && tl.pause(),
-        });
-
-        document.addEventListener("visibilitychange", () => {
-            if (!tl) return;
-            document.hidden ? tl.pause() : tl.play();
         });
     });
 }
@@ -308,9 +331,44 @@ function initAboutGridFlip() {
 }
 
 // =============================================================================
-// 5. MODULI ESISTENTI (Filter, Hover, Team, Parallax, Footer, etc.)
+// 5. ANIMAZIONI INGRESSO (data-transition)
 // =============================================================================
+function initializeAnimations(isTransition = false) {
+    const dynamicDelay = isTransition ? 1.1 : 0.2;
+    const linkDelay = isTransition ? 1.2 : 0.4;
 
+    const links = document.querySelectorAll(".link a");
+    if (links.length > 0) {
+        gsap.set(links, { y: "100%", opacity: 1 });
+        gsap.to(links, { y: "0%", duration: 1, stagger: 0.1, ease: "power4.out", delay: linkDelay });
+    }
+
+    const elementsToAnimate = document.querySelectorAll('[data-transition]');
+    safeSplitRevert(elementsToAnimate, 'split-done');
+
+    elementsToAnimate.forEach(el => {
+        const split = new SplitType(el, { types: 'lines', lineClass: 'line-inner' });
+        el.splitInstance = split; 
+        split.lines.forEach(line => {
+            const wrapper = document.createElement('div');
+            wrapper.classList.add('line-wrapper');
+            line.parentNode.insertBefore(wrapper, line);
+            wrapper.appendChild(line);
+            wrapper.style.overflow = 'hidden';
+            wrapper.style.display = 'block';
+            line.style.display = 'block';
+        });
+        const spans = el.querySelectorAll(".line-inner");
+        gsap.set(spans, { y: "110%" });
+        el.style.opacity = "1";
+        el.classList.add('split-done');
+        gsap.to(spans, { y: "0%", duration: 1.2, stagger: 0.08, ease: "power3.out", delay: dynamicDelay });
+    });
+}
+
+// =============================================================================
+// 6. ALTRI MODULI E UTILS
+// =============================================================================
 function initCategoryCount() {
     const categories = document.querySelectorAll('[data-category-id]');
     const projects = document.querySelectorAll('[data-project-category]');
@@ -534,36 +592,6 @@ let cmsNextScrollHandler = null; function initCmsNextPowerUp() {
     if (typeof $ === "undefined") return; if (cmsNextScrollHandler) { window.removeEventListener("scroll", cmsNextScrollHandler); cmsNextScrollHandler = null; } const componentsData = []; $("[tr-cmsnext-element='component']").each(function () { let componentEl = $(this), cmsListEl = componentEl.find(".w-dyn-items").first(), cmsItemEl = cmsListEl.children(), currentItemEl, noResultEl = componentEl.find("[tr-cmsnext-element='no-result']"); cmsItemEl.each(function () { if ($(this).find(".w--current").length) currentItemEl = $(this); }); let nextItemEl = currentItemEl ? currentItemEl.next() : $(), prevItemEl = currentItemEl ? currentItemEl.prev() : $(); if (componentEl.attr("tr-cmsnext-loop") === "true") { if (!nextItemEl.length) nextItemEl = cmsItemEl.first(); if (!prevItemEl.length) prevItemEl = cmsItemEl.last(); } let displayEl = nextItemEl; if (componentEl.attr("tr-cmsnext-showprev") === "true") displayEl = prevItemEl; if (componentEl.attr("tr-cmsnext-showall") === "true") { prevItemEl.addClass("is-prev"); currentItemEl && currentItemEl.addClass("is-current"); nextItemEl.addClass("is-next"); } else { cmsItemEl.not(displayEl).remove(); if (!displayEl.length) noResultEl.show(); if (!displayEl.length && componentEl.attr("tr-cmsnext-hideempty") === "true") componentEl.hide(); } const sectionEl = componentEl.closest(".section__next-project"); let targetItemEl = nextItemEl; if (componentEl.attr("tr-cmsnext-showprev") === "true") targetItemEl = prevItemEl; if (sectionEl.length && targetItemEl && targetItemEl.length) { componentsData.push({ sectionEl, componentEl, targetItemEl, triggered: false }); } }); if (componentsData.length) { let isRunning = false; cmsNextScrollHandler = () => { if (isRunning) return; isRunning = true; window.requestAnimationFrame(() => { componentsData.forEach((item) => { if (item.triggered) return; if (!document.contains(item.sectionEl[0])) return; const sectionRect = item.sectionEl[0].getBoundingClientRect(); const componentHeight = item.componentEl.outerHeight() || 0; if (sectionRect.bottom <= componentHeight + 1 && sectionRect.bottom >= 0) { const linkEl = item.targetItemEl.find("a").first(); const href = linkEl.attr("href"); if (href) { item.triggered = true; window.location.href = href; } } }); isRunning = false; }); }; window.addEventListener("scroll", cmsNextScrollHandler, { passive: true }); }
 }
 
-function initializeAnimations(isTransition = false) {
-    const dynamicDelay = isTransition ? 1.1 : 0.2;
-    const linkDelay = isTransition ? 1.2 : 0.4;
-    const links = document.querySelectorAll(".link a");
-    if (links.length > 0) {
-        gsap.set(links, { y: "100%", opacity: 1 });
-        gsap.to(links, { y: "0%", duration: 1, stagger: 0.1, ease: "power4.out", delay: linkDelay });
-    }
-    const elementsToAnimate = document.querySelectorAll('[data-transition]');
-    safeSplitRevert(elementsToAnimate, 'split-done');
-    elementsToAnimate.forEach(el => {
-        const split = new SplitType(el, { types: 'lines', lineClass: 'line-inner' });
-        el.splitInstance = split; 
-        split.lines.forEach(line => {
-            const wrapper = document.createElement('div');
-            wrapper.classList.add('line-wrapper');
-            line.parentNode.insertBefore(wrapper, line);
-            wrapper.appendChild(line);
-            wrapper.style.overflow = 'hidden';
-            wrapper.style.display = 'block';
-            line.style.display = 'block';
-        });
-        const spans = el.querySelectorAll(".line-inner");
-        gsap.set(spans, { y: "110%" });
-        el.style.opacity = "1";
-        el.classList.add('split-done');
-        gsap.to(spans, { y: "0%", duration: 1.2, stagger: 0.08, ease: "power3.out", delay: dynamicDelay });
-    });
-}
-
 // =============================================================================
 // NAVIGAZIONE E RESET
 // =============================================================================
@@ -610,7 +638,6 @@ function finalizePage(isTransition = false) {
     if (window.Webflow) { window.Webflow.destroy(); window.Webflow.ready(); window.Webflow.require('ix2').init(); }
     if (window.lenis) { window.lenis.scrollTo(0, { immediate: true }); window.lenis.resize(); }
 
-    // FONT LOADING: Aspetta il caricamento font per evitare i glitch
     document.fonts.ready.then(() => {
         initCategoryCount();
         initGridToggle();
@@ -619,7 +646,7 @@ function finalizePage(isTransition = false) {
         
         // Modules
         initMwgEffect029();
-        initLogoWallCycle();
+        initLogoWallCycle(); // Questa ora chiama la funzione che hai inserito tu
         initAboutGridFlip();
         initGlobalParallax();
         initSplitTextAnimations();
