@@ -1,6 +1,6 @@
 /**
  * WEBFLOW ULTIMATE ENGINE - FINAL INTEGRATION
- * Fixes: MWG Words Logic, Logo Wall Loop, Filters & Navigation
+ * Features: View Transitions, GSAP, Custom Grid Logic, Filters & Team
  */
 
 // 1. REGISTRAZIONE PLUGIN
@@ -9,7 +9,7 @@ if (typeof gsap !== "undefined") {
 }
 
 // =============================================================================
-// HELPER: SAFE REVERT (PULIZIA HTML)
+// HELPER: SAFE REVERT & HEAD SYNC
 // =============================================================================
 function safeSplitRevert(elements, className) {
     if (!elements.length) return;
@@ -28,6 +28,20 @@ function safeSplitRevert(elements, className) {
     });
 }
 
+function syncHead(newDoc) {
+    const currentHead = document.head;
+    const newStyles = newDoc.head.querySelectorAll('link[rel="stylesheet"], style');
+    const currentStylesMap = new Set();
+    document.head.querySelectorAll('link[rel="stylesheet"], style').forEach(s => {
+        currentStylesMap.add(s.href || s.innerText);
+    });
+    newStyles.forEach(style => {
+        if (!currentStylesMap.has(style.href || style.innerText)) {
+            currentHead.appendChild(style.cloneNode(true));
+        }
+    });
+}
+
 // =============================================================================
 // 2. ANIMAZIONI INGRESSO (data-transition)
 // =============================================================================
@@ -37,7 +51,7 @@ function initializeAnimations(isTransition = false) {
 
     const links = document.querySelectorAll(".link a");
     if (links.length > 0) {
-        gsap.set(links, { y: "100%" });
+        gsap.set(links, { y: "100%", opacity: 1 });
         gsap.to(links, { y: "0%", duration: 1, stagger: 0.1, ease: "power4.out", delay: linkDelay });
     }
 
@@ -58,187 +72,62 @@ function initializeAnimations(isTransition = false) {
         });
         const spans = el.querySelectorAll(".line-inner");
         gsap.set(spans, { y: "110%" });
+        el.style.opacity = "1"; 
         el.classList.add('split-done');
-        el.style.opacity = "1";
         gsap.to(spans, { y: "0%", duration: 1.2, stagger: 0.08, ease: "power3.out", delay: dynamicDelay });
     });
 }
 
 // =============================================================================
-// 3. MWG EFFECT 029 – SCROLL WORDS (TUO CODICE INTEGRATO)
+// 3. CONTEGGIO PROGETTI (TUO CODICE INTEGRATO)
 // =============================================================================
-function wrapWordsInSpan(element) {
-    const text = element.textContent;
-    element.innerHTML = text.split(" ").map((word) => `<span>${word}</span>`).join(" ");
-}
-
-function initMwgEffect029() {
-    if (typeof gsap === "undefined" || typeof ScrollTrigger === "undefined") return;
-
-    // Reset preventivo per evitare duplicazione span
-    const paragraph = document.querySelector(".mwg_effect029 .is--title-w");
-    if (!paragraph) return;
+function initCategoryCount() {
+    const categories = document.querySelectorAll('[data-category-id]');
+    const projects = document.querySelectorAll('[data-project-category]');
     
-    // Se è già stato processato, lo resettiamo al testo pulito prima di riapplicare
-    if(paragraph.dataset.mwgProcessed === "true") {
-        paragraph.innerHTML = paragraph.textContent; 
-    }
-    paragraph.dataset.mwgProcessed = "true";
-
-    // Animazione Scroll Icon
-    const scrollIcon = document.querySelector(".scroll");
-    if (scrollIcon) {
-        gsap.to(".scroll", {
-            autoAlpha: 0,
-            duration: 0.2,
-            scrollTrigger: {
-                trigger: ".mwg_effect029",
-                start: "top top",
-                end: "top top-=1",
-                toggleActions: "play none reverse none",
-            },
-        });
-    }
-
-    // Applicazione Spans
-    wrapWordsInSpan(paragraph);
-
-    // Assegnazione Classi Random (word0, word1, word2, word3)
-    const words = paragraph.querySelectorAll("span");
-    words.forEach((word) => {
-        word.classList.add("word" + Math.floor(Math.random() * 4));
-    });
-
-    // Animazioni GSAP specifiche
-    document.querySelectorAll(".mwg_effect029 .word1").forEach((el) => {
-        gsap.to(el, { x: "-0.8em", ease: "none", scrollTrigger: { trigger: el, start: "top 80%", end: "bottom 60%", scrub: 0.2 }});
-    });
-
-    document.querySelectorAll(".mwg_effect029 .word2").forEach((el) => {
-        gsap.to(el, { x: "1.6em", ease: "none", scrollTrigger: { trigger: el, start: "top 80%", end: "bottom 60%", scrub: 0.2 }});
-    });
-
-    document.querySelectorAll(".mwg_effect029 .word3").forEach((el) => {
-        gsap.to(el, { x: "-2.4em", ease: "none", scrollTrigger: { trigger: el, start: "top 80%", end: "bottom 60%", scrub: 0.2 }});
+    categories.forEach(category => {
+        const catID = category.getAttribute('data-category-id');
+        const countEl = category.querySelector('[data-category-count]');
+        if (!countEl) return;
+        const count = [...projects].filter(
+            proj => proj.getAttribute('data-project-category') === catID
+        ).length;
+        countEl.textContent = count;
     });
 }
 
 // =============================================================================
-// 4. LOGO WALL CYCLE (TUO CODICE INTEGRATO)
+// 4. TOGGLE VISTA GRIGLIA (TUO CODICE INTEGRATO)
 // =============================================================================
-function initLogoWallCycle() {
-    if (typeof gsap === "undefined" || typeof ScrollTrigger === "undefined") return;
-
-    const loopDelay = 1.5; 
-    const duration = 0.9; 
-
-    const roots = document.querySelectorAll("[data-logo-wall-cycle-init]");
-    if (!roots.length) return;
-
-    roots.forEach((root) => {
-        // Controllo init per evitare loop doppi sulla stessa pagina
-        if(root.dataset.lwInitialized === "true") return;
-        root.dataset.lwInitialized = "true";
-
-        const list = root.querySelector("[data-logo-wall-list]");
-        if (!list) return;
-
-        const items = Array.from(list.querySelectorAll("[data-logo-wall-item]"));
-        if (!items.length) return;
-
-        const shuffleFront = root.getAttribute("data-logo-wall-shuffle") !== "false";
-        const originalTargets = items.map((item) => item.querySelector("[data-logo-wall-target]")).filter(Boolean);
-
-        let visibleItems = [], visibleCount = 0, pool = [], pattern = [], patternIndex = 0, tl;
-
-        function isVisible(el) { return window.getComputedStyle(el).display !== "none"; }
-        function shuffleArray(arr) {
-            const a = arr.slice();
-            for (let i = a.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [a[i], a[j]] = [a[j], a[i]];
-            }
-            return a;
-        }
-
-        function setup() {
-            if (tl) tl.kill();
-            visibleItems = items.filter(isVisible);
-            visibleCount = visibleItems.length;
-            pattern = shuffleArray(Array.from({ length: visibleCount }, (_, i) => i));
-            patternIndex = 0;
-
-            items.forEach((item) => {
-                item.querySelectorAll("[data-logo-wall-target]").forEach((old) => old.remove());
+function initGridToggle() {
+    const triggers = document.querySelectorAll('.tt__left, .tt__right');
+    const contents = document.querySelectorAll('.ps__list-wrap, .ll__wrap');
+    
+    // Usiamo .onclick per evitare accumulo di listener durante la navigazione
+    triggers.forEach(trigger => {
+        trigger.onclick = function () {
+            const gridId = this.getAttribute('data-grid');
+            
+            // RESET
+            triggers.forEach(t => t.classList.remove('active'));
+            contents.forEach(c => c.classList.remove('active'));
+            
+            // ATTIVAZIONE
+            this.classList.add('active');
+            contents.forEach(content => {
+                if (content.getAttribute('data-grid') === gridId) {
+                    content.classList.add('active');
+                }
             });
-
-            pool = originalTargets.map((n) => n.cloneNode(true));
-            let front, rest;
-            if (shuffleFront) {
-                const shuffledAll = shuffleArray(pool);
-                front = shuffledAll.slice(0, visibleCount);
-                rest = shuffleArray(shuffledAll.slice(visibleCount));
-                pool = front.concat(rest);
-            } else {
-                front = pool.slice(0, visibleCount);
-                rest = shuffleArray(pool.slice(visibleCount));
-                pool = front.concat(rest);
-            }
-
-            for (let i = 0; i < visibleCount; i++) {
-                const parent = visibleItems[i].querySelector("[data-logo-wall-target-parent]") || visibleItems[i];
-                parent.appendChild(pool.shift());
-            }
-
-            tl = gsap.timeline({ repeat: -1, repeatDelay: loopDelay });
-            tl.call(swapNext);
-            tl.play();
-        }
-
-        function swapNext() {
-            const nowCount = items.filter(isVisible).length;
-            if (nowCount !== visibleCount) { setup(); return; }
-            if (!pool.length) return;
-
-            const idx = pattern[patternIndex % visibleCount];
-            patternIndex++;
-
-            const container = visibleItems[idx];
-            const parent = container.querySelector("[data-logo-wall-target-parent]") || container.querySelector("*:has(> [data-logo-wall-target])") || container;
-            const existing = parent.querySelectorAll("[data-logo-wall-target]");
-            if (existing.length > 1) return;
-
-            const current = parent.querySelector("[data-logo-wall-target]");
-            const incoming = pool.shift();
-
-            gsap.set(incoming, { yPercent: 50, autoAlpha: 0 });
-            parent.appendChild(incoming);
-
-            if (current) {
-                gsap.to(current, {
-                    yPercent: -50, autoAlpha: 0, duration, ease: "expo.inOut",
-                    onComplete: () => { current.remove(); pool.push(current); },
-                });
-            }
-            gsap.to(incoming, { yPercent: 0, autoAlpha: 1, duration, delay: 0.1, ease: "expo.inOut" });
-        }
-
-        setup();
-
-        ScrollTrigger.create({
-            trigger: root,
-            start: "top bottom",
-            end: "bottom top",
-            onEnter: () => tl && tl.play(),
-            onLeave: () => tl && tl.pause(),
-            onEnterBack: () => tl && tl.play(),
-            onLeaveBack: () => tl && tl.pause(),
-        });
+            
+            // Refresh ScrollTrigger dopo il cambio layout
+            ScrollTrigger.refresh();
+        };
     });
 }
 
 // =============================================================================
-// 5. SISTEMA MULTI-FILTER (FIXED)
+// 5. SISTEMA MULTI-FILTER + GRIGLIA COMPLESSA (TUO CODICE INTEGRATO)
 // =============================================================================
 let currentResizeHandler = null;
 
@@ -246,12 +135,14 @@ function initMutliFilterSetupMultiMatch() {
     const groups = [...document.querySelectorAll('[data-filter-group]')];
     if (!groups.length) return;
 
+    // Gestione Resize Globale (Safe)
     if (currentResizeHandler) {
         window.removeEventListener('resize', currentResizeHandler);
         currentResizeHandler = null;
     }
     currentResizeHandler = () => {
         groups.forEach(group => {
+            // Rilancia il filtro attivo per ricalcolare la griglia
             const activeBtn = group.querySelector('[data-filter-target][data-filter-status="active"]');
             if (activeBtn) activeBtn.click();
         });
@@ -259,6 +150,7 @@ function initMutliFilterSetupMultiMatch() {
     window.addEventListener('resize', currentResizeHandler);
 
     groups.forEach(group => {
+        // Clone node per pulire vecchi eventi click
         const oldGroup = group;
         const newGroup = oldGroup.cloneNode(true);
         oldGroup.parentNode.replaceChild(newGroup, oldGroup);
@@ -268,6 +160,7 @@ function initMutliFilterSetupMultiMatch() {
         const buttons = [...newGroup.querySelectorAll('[data-filter-target]')];
         const items = [...newGroup.querySelectorAll('[data-filter-name]')];
 
+        // --- SETUP TOKEN ---
         const itemTokens = new Map();
         items.forEach(el => {
             const collectors = el.querySelectorAll('[data-filter-name-collect]');
@@ -282,44 +175,78 @@ function initMutliFilterSetupMultiMatch() {
             const raw = (el.getAttribute('data-filter-name') || '').trim().toLowerCase();
             const tokens = raw ? raw.split(/\s+/).filter(Boolean) : [];
             itemTokens.set(el, new Set(tokens));
-            el.setAttribute('data-filter-status', 'active');
-            el.removeAttribute('data-grid-pos');
+
+            if (!el.hasAttribute('data-filter-status')) el.setAttribute('data-filter-status', 'active');
         });
 
         let activeTags = targetMatch === 'single' ? null : new Set(['all']);
 
-        const paint = (rawTarget) => {
-            if (rawTarget) {
+        // --- HELPERS ---
+        const setButtonState = (btn, on) => {
+            const next = on ? 'active' : 'not-active';
+            if (btn.getAttribute('data-filter-status') !== next) {
+                btn.setAttribute('data-filter-status', next);
+                btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+            }
+        };
+
+        const hasRealActive = () => {
+            if (targetMatch === 'single') return activeTags !== null;
+            return activeTags.size > 0 && !activeTags.has('all');
+        };
+
+        const resetAll = () => {
+            if (targetMatch === 'single') activeTags = null;
+            else { activeTags.clear(); activeTags.add('all'); }
+        };
+
+        const itemMatches = (el) => {
+            if (!hasRealActive()) return true;
+            const tokens = itemTokens.get(el);
+            if (targetMatch === 'single') return tokens.has(activeTags);
+            const selected = [...activeTags];
+            if (nameMatch === 'single') return selected.every(tag => tokens.has(tag));
+            else return selected.some(tag => tokens.has(tag));
+        };
+
+        // --- PAINT (APPLICAZIONE FILTRI E GRIGLIA) ---
+        const paint = (rawTarget, isResize = false) => {
+            if (!isResize && rawTarget) {
                 const target = rawTarget.trim().toLowerCase();
                 if (target === 'all' || target === 'reset') {
-                    if (targetMatch === 'single') activeTags = null;
-                    else { activeTags.clear(); activeTags.add('all'); }
+                    resetAll();
                 } else if (targetMatch === 'single') {
                     activeTags = target;
                 } else {
                     if (activeTags.has('all')) activeTags.delete('all');
                     if (activeTags.has(target)) activeTags.delete(target);
                     else activeTags.add(target);
-                    if (activeTags.size === 0) { activeTags.clear(); activeTags.add('all'); }
+                    if (activeTags.size === 0) resetAll();
                 }
             }
 
             const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
             let visibleCounter = 0;
-            const isFiltered = activeTags !== null && !(activeTags instanceof Set && activeTags.has('all'));
 
             items.forEach(el => {
-                const tokens = itemTokens.get(el);
-                let shouldShow = true;
-                if (isFiltered) {
-                    const selected = targetMatch === 'single' ? [activeTags] : [...activeTags];
-                    shouldShow = nameMatch === 'single' ? selected.every(tag => tokens.has(tag)) : selected.some(tag => tokens.has(tag));
-                }
-
+                const shouldShow = itemMatches(el);
                 if (shouldShow) {
                     visibleCounter++;
-                    if (isDesktop) el.setAttribute('data-grid-pos', ((visibleCounter - 1) % 9) + 1);
-                    else el.removeAttribute('data-grid-pos');
+                    let desktopPos;
+
+                    // LOGICA GRIGLIA COMPLESSA (TUO CODICE)
+                    if (isDesktop) {
+                        if (visibleCounter <= 5) {
+                            // Primi 5 elementi: posizioni 1, 2, 3, 4, 5
+                            desktopPos = visibleCounter;
+                        } else {
+                            // Dal 6 in poi: Loop di 8 elementi (posizioni 6 -> 13)
+                            desktopPos = ((visibleCounter - 6) % 8) + 6;
+                        }
+                        el.setAttribute('data-grid-pos', desktopPos);
+                    } else {
+                        el.removeAttribute('data-grid-pos');
+                    }
                     el.setAttribute('data-filter-status', 'active');
                 } else {
                     el.removeAttribute('data-grid-pos');
@@ -327,16 +254,16 @@ function initMutliFilterSetupMultiMatch() {
                 }
             });
 
-            buttons.forEach(btn => {
-                const t = (btn.getAttribute('data-filter-target') || '').trim().toLowerCase();
-                if (t === 'reset') {
-                     btn.setAttribute('data-filter-status', isFiltered ? 'active' : 'not-active');
-                } else {
-                    let on = (t === 'all') ? !isFiltered : 
-                             (targetMatch === 'single' ? activeTags === t : (activeTags instanceof Set && activeTags.has(t)));
-                    btn.setAttribute('data-filter-status', on ? 'active' : 'not-active');
-                }
-            });
+            if (!isResize) {
+                buttons.forEach(btn => {
+                    const t = (btn.getAttribute('data-filter-target') || '').trim().toLowerCase();
+                    let on = false;
+                    if (t === 'all') on = !hasRealActive();
+                    else if (t === 'reset') on = hasRealActive();
+                    else on = targetMatch === 'single' ? activeTags === t : activeTags.has(t);
+                    setButtonState(btn, on);
+                });
+            }
             ScrollTrigger.refresh();
         };
 
@@ -350,7 +277,7 @@ function initMutliFilterSetupMultiMatch() {
 }
 
 // =============================================================================
-// 6. ANIMAZIONI GSAP HOVER (FIXED: WRAPPER)
+// 6. ANIMAZIONI GSAP HOVER (Safe Wrapper)
 // =============================================================================
 function initPsItemHover() {
     const psItems = document.querySelectorAll(".ps__item");
@@ -395,32 +322,77 @@ function initPsItemHover() {
 }
 
 // =============================================================================
-// 7. ALTRI MODULI (Count, Toggle, Team, Flip)
+// 7. ALTRI MODULI (Words, Logo Wall, Team, Flip)
 // =============================================================================
-function initCategoryCount() {
-    const categories = document.querySelectorAll('[data-category-id]');
-    const projects = document.querySelectorAll('[data-project-category]');
-    if (!categories.length) return;
-    categories.forEach(category => {
-        const catID = category.getAttribute('data-category-id');
-        const countEl = category.querySelector('[data-category-count]');
-        if (countEl) countEl.textContent = [...projects].filter(p => p.getAttribute('data-project-category') === catID).length;
+function initMwgEffect029() {
+    const paragraph = document.querySelector(".mwg_effect029 .is--title-w");
+    if (!paragraph) return;
+    if(paragraph.dataset.processed === "true") paragraph.innerHTML = paragraph.textContent; 
+    paragraph.dataset.processed = "true";
+
+    const scrollIcon = document.querySelector(".scroll");
+    if (scrollIcon) {
+        gsap.to(".scroll", { autoAlpha: 0, duration: 0.2, scrollTrigger: { trigger: ".mwg_effect029", start: "top top", end: "top top-=1", toggleActions: "play none reverse none" }});
+    }
+
+    paragraph.innerHTML = paragraph.textContent.split(" ").map(w => `<span>${w}</span>`).join(" ");
+    const words = paragraph.querySelectorAll("span");
+    words.forEach(w => w.classList.add("word" + Math.floor(Math.random() * 4)));
+
+    [".word1", ".word2", ".word3"].forEach((cls, i) => {
+        const x = ["-0.8em", "1.6em", "-2.4em"][i];
+        document.querySelectorAll(`.mwg_effect029 ${cls}`).forEach(el => gsap.to(el, { x: x, ease: "none", scrollTrigger: { trigger: el, start: "top 80%", end: "bottom 60%", scrub: 0.2 }}));
     });
 }
 
-function initGridToggle() {
-    const triggers = document.querySelectorAll('.tt__left, .tt__right');
-    const contents = document.querySelectorAll('.ps__list-wrap, .ll__wrap');
-    if (!triggers.length) return;
-    triggers.forEach(trigger => {
-        trigger.onclick = function() {
-            const gridId = this.getAttribute('data-grid');
-            triggers.forEach(t => t.classList.remove('active'));
-            contents.forEach(c => c.classList.remove('active'));
-            this.classList.add('active');
-            contents.forEach(c => { if (c.getAttribute('data-grid') === gridId) c.classList.add('active'); });
-            ScrollTrigger.refresh();
+function initLogoWallCycle() {
+    const roots = document.querySelectorAll("[data-logo-wall-cycle-init]");
+    roots.forEach((root) => {
+        if(root.dataset.lwInitialized === "true") return;
+        root.dataset.lwInitialized = "true";
+        const list = root.querySelector("[data-logo-wall-list]");
+        if (!list) return;
+        const items = Array.from(list.querySelectorAll("[data-logo-wall-item]"));
+        if (!items.length) return;
+        const visibleItems = items.filter(el => window.getComputedStyle(el).display !== "none");
+        if(!visibleItems.length) return;
+        const originalTargets = items.map((item) => item.querySelector("[data-logo-wall-target]")).filter(Boolean);
+
+        let pool = [], pattern = [], patternIndex = 0, tl;
+        const shuffleArray = (arr) => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+        const setup = () => {
+            if (tl) tl.kill();
+            items.forEach((item) => item.querySelectorAll("[data-logo-wall-target]").forEach((old) => { if(old.parentNode.querySelectorAll("[data-logo-wall-target]").length > 1 || old.classList.contains('cloned-logo')) old.remove(); }));
+            pattern = shuffleArray(Array.from({ length: visibleItems.length }, (_, i) => i));
+            patternIndex = 0;
+            pool = originalTargets.map(n => { const c = n.cloneNode(true); c.classList.add('cloned-logo'); return c; });
+            for (let i = 0; i < visibleItems.length; i++) {
+                const parent = visibleItems[i].querySelector("[data-logo-wall-target-parent]") || visibleItems[i];
+                parent.innerHTML = ''; 
+                parent.appendChild(pool.shift());
+            }
+            pool = originalTargets.map(n => { const c = n.cloneNode(true); c.classList.add('cloned-logo'); return c; });
+            tl = gsap.timeline({ repeat: -1, repeatDelay: 1.5 });
+            tl.call(swapNext);
+            tl.play();
         };
+
+        const swapNext = () => {
+            if (!pool.length) pool = originalTargets.map(n => { const c = n.cloneNode(true); c.classList.add('cloned-logo'); return c; });
+            const idx = pattern[patternIndex % visibleItems.length];
+            patternIndex++;
+            const container = visibleItems[idx];
+            const parent = container.querySelector("[data-logo-wall-target-parent]") || container;
+            const current = parent.querySelector("[data-logo-wall-target]");
+            const incoming = pool.shift();
+            gsap.set(incoming, { yPercent: 50, autoAlpha: 0 });
+            parent.appendChild(incoming);
+            if (current) gsap.to(current, { yPercent: -50, autoAlpha: 0, duration: 0.9, ease: "expo.inOut", onComplete: () => { current.remove(); pool.push(current); }});
+            gsap.to(incoming, { yPercent: 0, autoAlpha: 1, duration: 0.9, delay: 0.1, ease: "expo.inOut" });
+        };
+        setup();
+        ScrollTrigger.create({ trigger: root, start: "top bottom", end: "bottom top", onEnter: () => tl && tl.play(), onLeave: () => tl && tl.pause() });
     });
 }
 
@@ -474,20 +446,6 @@ function initWGTeamModule() {
 // =============================================================================
 // 8. NAVIGAZIONE (VIEW TRANSITIONS + HEAD SYNC)
 // =============================================================================
-function syncHead(newDoc) {
-    const currentHead = document.head;
-    const newStyles = newDoc.head.querySelectorAll('link[rel="stylesheet"], style');
-    const currentStylesMap = new Set();
-    document.head.querySelectorAll('link[rel="stylesheet"], style').forEach(s => {
-        currentStylesMap.add(s.href || s.innerText);
-    });
-    newStyles.forEach(style => {
-        if (!currentStylesMap.has(style.href || style.innerText)) {
-            currentHead.appendChild(style.cloneNode(true));
-        }
-    });
-}
-
 if (window.navigation) {
     navigation.addEventListener("navigate", (event) => {
         if (!event.destination.url.includes(window.location.origin)) return;
@@ -516,7 +474,7 @@ if (window.navigation) {
 }
 
 // =============================================================================
-// 9. FINALIZE (RESET & RE-INIT)
+// 9. FINALIZE (MASTER CONTROLLER)
 // =============================================================================
 function finalizePage(isTransition = false) {
     window.scrollTo(0, 0);
@@ -533,16 +491,13 @@ function finalizePage(isTransition = false) {
         window.lenis.resize(); 
     }
     
-    // Ordine di inizializzazione
-    initMutliFilterSetupMultiMatch();
-    initPsItemHover();
-    
-    // Moduli Custom Aggiornati
-    initMwgEffect029();
-    initLogoWallCycle();
-
+    // Inizializza Moduli (in ordine sicuro)
     initCategoryCount();
     initGridToggle();
+    initMutliFilterSetupMultiMatch();
+    initPsItemHover();
+    initMwgEffect029();
+    initLogoWallCycle();
     if (typeof initWGTeamModule === "function") initWGTeamModule();
     if (typeof initAboutGridFlip === "function") initAboutGridFlip();
     
@@ -550,7 +505,5 @@ function finalizePage(isTransition = false) {
     setTimeout(() => { ScrollTrigger.refresh(); }, 400);
 }
 
+// Avvio Iniziale
 window.addEventListener("DOMContentLoaded", () => finalizePage(false));
-window.addEventListener("resize", () => {
-    if (document.querySelector('[data-filter-group]')) initMutliFilterSetupMultiMatch();
-});
