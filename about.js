@@ -1,6 +1,6 @@
 /**
  * WEBFLOW ULTIMATE ENGINE - FINAL INTEGRATION
- * Features: New Grid Logic, Count, Toggle, Hover, Words, Team & Transitions
+ * Features: Navigation, Filters, Team, Words, Wall, Flip, Scale, CircleType & CMS Next
  */
 
 // 1. REGISTRAZIONE PLUGIN
@@ -29,224 +29,7 @@ function safeSplitRevert(elements, className) {
 }
 
 // =============================================================================
-// 1. CONTEGGIO PROGETTI PER CATEGORIA (TUO CODICE INTEGRATO)
-// =============================================================================
-function initCategoryCount() {
-    const categories = document.querySelectorAll('[data-category-id]');
-    const projects = document.querySelectorAll('[data-project-category]');
-    
-    if (!categories.length) return;
-
-    categories.forEach(category => {
-        const catID = category.getAttribute('data-category-id');
-        const countEl = category.querySelector('[data-category-count]');
-
-        if (!countEl) return;
-
-        // Conta quanti progetti hanno questa categoria
-        const count = [...projects].filter(
-            proj => proj.getAttribute('data-project-category') === catID
-        ).length;
-
-        countEl.textContent = count;
-    });
-}
-
-// =============================================================================
-// 2. TOGGLE VISTA GRIGLIA (TUO CODICE INTEGRATO)
-// =============================================================================
-function initGridToggle() {
-    const triggers = document.querySelectorAll('.tt__left, .tt__right');
-    const contents = document.querySelectorAll('.ps__list-wrap, .ll__wrap');
-    
-    if (!triggers.length) return;
-
-    triggers.forEach(trigger => {
-        // Usiamo onclick per sovrascrivere listener precedenti (Safe for transitions)
-        trigger.onclick = function () {
-            // A. Leggiamo il valore data-grid del tasto cliccato
-            const gridId = this.getAttribute('data-grid');
-
-            // B. RESET: Rimuoviamo 'active' da TUTTI
-            triggers.forEach(t => t.classList.remove('active'));
-            contents.forEach(c => c.classList.remove('active'));
-
-            // C. ATTIVAZIONE TASTO
-            this.classList.add('active');
-
-            // D. ATTIVAZIONE CONTENUTO
-            contents.forEach(content => {
-                if (content.getAttribute('data-grid') === gridId) {
-                    content.classList.add('active');
-                }
-            });
-            
-            // Refresh scroll trigger per sicurezza
-            ScrollTrigger.refresh();
-        };
-    });
-}
-
-// =============================================================================
-// 3. SISTEMA MULTI-FILTER (TUO CODICE CON LOGICA 1-5 + LOOP 6-13)
-// =============================================================================
-let currentResizeHandler = null;
-
-function initMutliFilterSetupMultiMatch() {
-    const groups = [...document.querySelectorAll('[data-filter-group]')];
-    if (!groups.length) return;
-
-    // Gestione Resize Globale (per evitare accumulo listener)
-    if (currentResizeHandler) {
-        window.removeEventListener('resize', currentResizeHandler);
-        currentResizeHandler = null;
-    }
-    currentResizeHandler = () => {
-        groups.forEach(group => {
-            const activeBtn = group.querySelector('[data-filter-target][data-filter-status="active"]');
-            if (activeBtn) {
-                // Riesegue la logica di paint (senza resettare i tag)
-                activeBtn.click(); 
-            }
-        });
-    };
-    window.addEventListener('resize', currentResizeHandler);
-
-    groups.forEach(group => {
-        // Clone per rimuovere listener precedenti
-        const oldGroup = group;
-        const newGroup = oldGroup.cloneNode(true);
-        oldGroup.parentNode.replaceChild(newGroup, oldGroup);
-
-        const targetMatch = (newGroup.getAttribute('data-filter-target-match') || 'multi').trim().toLowerCase();
-        const nameMatch = (newGroup.getAttribute('data-filter-name-match') || 'multi').trim().toLowerCase();
-        const buttons = [...newGroup.querySelectorAll('[data-filter-target]')];
-        const items = [...newGroup.querySelectorAll('[data-filter-name]')];
-
-        // --- SETUP TOKEN ---
-        const itemTokens = new Map();
-        items.forEach(el => {
-            const collectors = el.querySelectorAll('[data-filter-name-collect]');
-            if (collectors.length) {
-                const seen = new Set(), tokens = [];
-                collectors.forEach(c => {
-                    const v = (c.getAttribute('data-filter-name-collect') || '').trim().toLowerCase();
-                    if (v && !seen.has(v)) { seen.add(v); tokens.push(v); }
-                });
-                if (tokens.length) el.setAttribute('data-filter-name', tokens.join(' '));
-            }
-            const raw = (el.getAttribute('data-filter-name') || '').trim().toLowerCase();
-            const tokens = raw ? raw.split(/\s+/).filter(Boolean) : [];
-            itemTokens.set(el, new Set(tokens));
-
-            // Default Active
-            if (!el.hasAttribute('data-filter-status')) el.setAttribute('data-filter-status', 'active');
-            // Reset grid pos iniziale
-            el.removeAttribute('data-grid-pos');
-        });
-
-        let activeTags = targetMatch === 'single' ? null : new Set(['all']);
-
-        // --- HELPERS ---
-        const setButtonState = (btn, on) => {
-            const next = on ? 'active' : 'not-active';
-            if (btn.getAttribute('data-filter-status') !== next) {
-                btn.setAttribute('data-filter-status', next);
-                btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-            }
-        };
-
-        const hasRealActive = () => {
-            if (targetMatch === 'single') return activeTags !== null;
-            return activeTags.size > 0 && !activeTags.has('all');
-        };
-
-        const resetAll = () => {
-            if (targetMatch === 'single') activeTags = null;
-            else { activeTags.clear(); activeTags.add('all'); }
-        };
-
-        const itemMatches = (el) => {
-            if (!hasRealActive()) return true;
-            const tokens = itemTokens.get(el);
-            if (targetMatch === 'single') return tokens.has(activeTags);
-            const selected = [...activeTags];
-            if (nameMatch === 'single') return selected.every(tag => tokens.has(tag));
-            else return selected.some(tag => tokens.has(tag));
-        };
-
-        // --- PAINT ---
-        const paint = (rawTarget, isResize = false) => {
-            // Se non è resize, aggiorna i tag
-            if (!isResize && rawTarget !== null) {
-                const target = rawTarget.trim().toLowerCase();
-                if (target === 'all' || target === 'reset') {
-                    resetAll();
-                } else if (targetMatch === 'single') {
-                    activeTags = target;
-                } else {
-                    if (activeTags.has('all')) activeTags.delete('all');
-                    if (activeTags.has(target)) activeTags.delete(target);
-                    else activeTags.add(target);
-                    if (activeTags.size === 0) resetAll();
-                }
-            }
-
-            const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
-            let visibleCounter = 0;
-
-            items.forEach(el => {
-                const shouldShow = itemMatches(el);
-
-                if (shouldShow) {
-                    visibleCounter++;
-                    let desktopPos;
-
-                    if (isDesktop) {
-                        // LOGICA SPECIALE: 1-5 fissi, poi loop 6-13
-                        if (visibleCounter <= 5) {
-                            desktopPos = visibleCounter;
-                        } else {
-                            // Loop 8 elementi (6 -> 13)
-                            desktopPos = ((visibleCounter - 6) % 8) + 6;
-                        }
-                        el.setAttribute('data-grid-pos', desktopPos);
-                    } else {
-                        el.removeAttribute('data-grid-pos');
-                    }
-                    el.setAttribute('data-filter-status', 'active');
-                } else {
-                    el.removeAttribute('data-grid-pos');
-                    el.setAttribute('data-filter-status', 'not-active');
-                }
-            });
-
-            // Aggiorna Bottoni
-            buttons.forEach(btn => {
-                const t = (btn.getAttribute('data-filter-target') || '').trim().toLowerCase();
-                let on = false;
-                if (t === 'all') on = !hasRealActive();
-                else if (t === 'reset') on = hasRealActive();
-                else on = targetMatch === 'single' ? activeTags === t : activeTags.has(t);
-                setButtonState(btn, on);
-            });
-            
-            ScrollTrigger.refresh();
-        };
-
-        newGroup.onclick = (e) => {
-            const btn = e.target.closest('[data-filter-target]');
-            // Passiamo il target al paint, false indica che NON è un evento di resize
-            if (btn) paint(btn.getAttribute('data-filter-target'), false);
-        };
-
-        // Inizializzazione (simuliamo 'all' senza cambiare stato se già settato, ma per applicare griglia)
-        paint(null, true); 
-    });
-}
-
-// =============================================================================
-// 4. ANIMAZIONI INGRESSO (data-transition)
+// 2. ANIMAZIONI INGRESSO
 // =============================================================================
 function initializeAnimations(isTransition = false) {
     const dynamicDelay = isTransition ? 1.1 : 0.2;
@@ -283,8 +66,254 @@ function initializeAnimations(isTransition = false) {
 }
 
 // =============================================================================
-// 5. ANIMAZIONI GSAP HOVER
+// 3. NUOVI MODULI: SCALE, CIRCLE, CMS NEXT
 // =============================================================================
+
+function initCircleType() {
+    const circleEl = document.getElementById('circlep');
+    if (circleEl && typeof CircleType !== 'undefined') {
+        new CircleType(circleEl);
+    }
+}
+
+function initScaleOnScroll() {
+    const elements = gsap.utils.toArray("[data-scale]");
+    if (!elements.length) return;
+
+    elements.forEach((el) => {
+        // Kill previous tweens to avoid conflicts
+        gsap.killTweensOf(el);
+        
+        // Initial state
+        gsap.set(el, { scale: 1.2 });
+
+        // Animation
+        gsap.to(el, {
+            scale: 1,
+            ease: "power2.inOut",
+            duration: 1.5,
+            scrollTrigger: {
+                trigger: el,
+                start: "top 90%",
+                toggleActions: "play none none reverse",
+            },
+        });
+    });
+}
+
+// Variabile globale per gestire l'event listener dello scroll
+let cmsNextScrollHandler = null;
+
+function initCmsNextPowerUp() {
+    // Dipendenza jQuery
+    if (typeof $ === "undefined") return;
+
+    // Pulizia listener precedente
+    if (cmsNextScrollHandler) {
+        window.removeEventListener("scroll", cmsNextScrollHandler);
+        cmsNextScrollHandler = null;
+    }
+
+    const componentsData = [];
+
+    $("[tr-cmsnext-element='component']").each(function () {
+        let componentEl = $(this),
+            cmsListEl = componentEl.find(".w-dyn-items").first(),
+            cmsItemEl = cmsListEl.children(),
+            currentItemEl,
+            noResultEl = componentEl.find("[tr-cmsnext-element='no-result']");
+
+        cmsItemEl.each(function () {
+            if ($(this).find(".w--current").length) currentItemEl = $(this);
+        });
+
+        let nextItemEl = currentItemEl ? currentItemEl.next() : $(),
+            prevItemEl = currentItemEl ? currentItemEl.prev() : $();
+
+        if (componentEl.attr("tr-cmsnext-loop") === "true") {
+            if (!nextItemEl.length) nextItemEl = cmsItemEl.first();
+            if (!prevItemEl.length) prevItemEl = cmsItemEl.last();
+        }
+
+        let displayEl = nextItemEl;
+        if (componentEl.attr("tr-cmsnext-showprev") === "true") displayEl = prevItemEl;
+
+        if (componentEl.attr("tr-cmsnext-showall") === "true") {
+            prevItemEl.addClass("is-prev");
+            currentItemEl && currentItemEl.addClass("is-current");
+            nextItemEl.addClass("is-next");
+        } else {
+            cmsItemEl.not(displayEl).remove();
+            if (!displayEl.length) noResultEl.show();
+            if (!displayEl.length && componentEl.attr("tr-cmsnext-hideempty") === "true") componentEl.hide();
+        }
+
+        // --- SCROLL TO NEXT LOGIC ---
+        const sectionEl = componentEl.closest(".section__next-project");
+        let targetItemEl = nextItemEl;
+        if (componentEl.attr("tr-cmsnext-showprev") === "true") {
+            targetItemEl = prevItemEl;
+        }
+
+        if (sectionEl.length && targetItemEl && targetItemEl.length) {
+            componentsData.push({
+                sectionEl,
+                componentEl,
+                targetItemEl,
+                triggered: false
+            });
+        }
+    });
+
+    if (componentsData.length) {
+        let isRunning = false;
+
+        cmsNextScrollHandler = () => {
+            if (isRunning) return;
+            isRunning = true;
+
+            window.requestAnimationFrame(() => {
+                componentsData.forEach((item) => {
+                    if (item.triggered) return;
+                    // Check if element is still in DOM (safety for transitions)
+                    if (!document.contains(item.sectionEl[0])) return;
+
+                    const sectionRect = item.sectionEl[0].getBoundingClientRect();
+                    const componentHeight = item.componentEl.outerHeight() || 0;
+
+                    if (sectionRect.bottom <= componentHeight + 1 && sectionRect.bottom >= 0) {
+                        const linkEl = item.targetItemEl.find("a").first();
+                        const href = linkEl.attr("href");
+
+                        if (href) {
+                            item.triggered = true;
+                            // Usa window.location.href normale che verrà intercettato dal nostro listener globale
+                            window.location.href = href; 
+                        }
+                    }
+                });
+                isRunning = false;
+            });
+        };
+
+        window.addEventListener("scroll", cmsNextScrollHandler, { passive: true });
+    }
+}
+
+
+// =============================================================================
+// 4. MODULI ESISTENTI (Filtri, Hover, Words, Team, Wall, Flip, Count, Toggle)
+// =============================================================================
+let currentResizeHandler = null;
+
+function initMutliFilterSetupMultiMatch() {
+    const groups = [...document.querySelectorAll('[data-filter-group]')];
+    if (!groups.length) return;
+
+    if (currentResizeHandler) {
+        window.removeEventListener('resize', currentResizeHandler);
+        currentResizeHandler = null;
+    }
+    currentResizeHandler = () => {
+        groups.forEach(group => {
+            const activeBtn = group.querySelector('[data-filter-target][data-filter-status="active"]');
+            if (activeBtn) activeBtn.click();
+        });
+    };
+    window.addEventListener('resize', currentResizeHandler);
+
+    groups.forEach(group => {
+        const oldGroup = group;
+        const newGroup = oldGroup.cloneNode(true);
+        oldGroup.parentNode.replaceChild(newGroup, oldGroup);
+
+        const targetMatch = (newGroup.getAttribute('data-filter-target-match') || 'multi').trim().toLowerCase();
+        const nameMatch = (newGroup.getAttribute('data-filter-name-match') || 'multi').trim().toLowerCase();
+        const buttons = [...newGroup.querySelectorAll('[data-filter-target]')];
+        const items = [...newGroup.querySelectorAll('[data-filter-name]')];
+
+        const itemTokens = new Map();
+        items.forEach(el => {
+            const collectors = el.querySelectorAll('[data-filter-name-collect]');
+            if (collectors.length) {
+                const seen = new Set(), tokens = [];
+                collectors.forEach(c => {
+                    const v = (c.getAttribute('data-filter-name-collect') || '').trim().toLowerCase();
+                    if (v && !seen.has(v)) { seen.add(v); tokens.push(v); }
+                });
+                if (tokens.length) el.setAttribute('data-filter-name', tokens.join(' '));
+            }
+            const raw = (el.getAttribute('data-filter-name') || '').trim().toLowerCase();
+            const tokens = raw ? raw.split(/\s+/).filter(Boolean) : [];
+            itemTokens.set(el, new Set(tokens));
+            el.setAttribute('data-filter-status', 'active');
+            el.removeAttribute('data-grid-pos');
+        });
+
+        let activeTags = targetMatch === 'single' ? null : new Set(['all']);
+
+        const paint = (rawTarget, isResize = false) => {
+            if (!isResize && rawTarget !== null) {
+                const target = rawTarget.trim().toLowerCase();
+                if (target === 'all' || target === 'reset') {
+                    if (targetMatch === 'single') activeTags = null;
+                    else { activeTags.clear(); activeTags.add('all'); }
+                } else if (targetMatch === 'single') {
+                    activeTags = target;
+                } else {
+                    if (activeTags.has('all')) activeTags.delete('all');
+                    if (activeTags.has(target)) activeTags.delete(target);
+                    else activeTags.add(target);
+                    if (activeTags.size === 0) { activeTags.clear(); activeTags.add('all'); }
+                }
+            }
+
+            const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
+            let visibleCounter = 0;
+
+            items.forEach(el => {
+                const tokens = itemTokens.get(el);
+                let shouldShow = true;
+                if (activeTags !== null && !(activeTags instanceof Set && activeTags.has('all'))) {
+                    const selected = targetMatch === 'single' ? [activeTags] : [...activeTags];
+                    shouldShow = nameMatch === 'single' ? selected.every(tag => tokens.has(tag)) : selected.some(tag => tokens.has(tag));
+                }
+
+                if (shouldShow) {
+                    visibleCounter++;
+                    let desktopPos;
+                    if (isDesktop) {
+                        if (visibleCounter <= 5) desktopPos = visibleCounter;
+                        else desktopPos = ((visibleCounter - 6) % 8) + 6;
+                        el.setAttribute('data-grid-pos', desktopPos);
+                    } else {
+                        el.removeAttribute('data-grid-pos');
+                    }
+                    el.setAttribute('data-filter-status', 'active');
+                } else {
+                    el.removeAttribute('data-grid-pos');
+                    el.setAttribute('data-filter-status', 'not-active');
+                }
+            });
+
+            buttons.forEach(btn => {
+                const t = (btn.getAttribute('data-filter-target') || '').trim().toLowerCase();
+                let on = (t === 'all') ? (activeTags instanceof Set && activeTags.has('all')) || activeTags === null : 
+                         (targetMatch === 'single' ? activeTags === t : activeTags.has(t));
+                btn.setAttribute('data-filter-status', on ? 'active' : 'not-active');
+            });
+            ScrollTrigger.refresh();
+        };
+
+        newGroup.onclick = (e) => {
+            const btn = e.target.closest('[data-filter-target]');
+            if (btn) paint(btn.getAttribute('data-filter-target'), false);
+        };
+
+        paint(null, true); 
+    });
+}
+
 function initPsItemHover() {
     const psItems = document.querySelectorAll(".ps__item");
     if (!psItems.length) return;
@@ -302,7 +331,6 @@ function initPsItemHover() {
             const split = new SplitType(el, { types: "lines", lineClass: "split-line" });
             el.splitInstance = split; 
             el.classList.add('split-done-hover');
-            
             split.lines.forEach(line => {
                 const wrapper = document.createElement('div');
                 wrapper.classList.add('line-wrapper');
@@ -312,7 +340,6 @@ function initPsItemHover() {
                 line.parentNode.insertBefore(wrapper, line);
                 wrapper.appendChild(line);
             });
-
             gsap.set(split.lines, { yPercent: 105 });
             allLines.push(...split.lines);
         });
@@ -327,9 +354,6 @@ function initPsItemHover() {
     });
 }
 
-// =============================================================================
-// 6. MODULI AGGIUNTIVI (Words, Wall, Team, Flip)
-// =============================================================================
 function initMwgEffect029() {
     const paragraph = document.querySelector(".mwg_effect029 .is--title-w");
     if (!paragraph) return;
@@ -466,8 +490,35 @@ function initWGTeamModule() {
   });
 }
 
+function initCategoryCount() {
+    const categories = document.querySelectorAll('[data-category-id]');
+    const projects = document.querySelectorAll('[data-project-category]');
+    if (!categories.length) return;
+    categories.forEach(category => {
+        const catID = category.getAttribute('data-category-id');
+        const countEl = category.querySelector('[data-category-count]');
+        if (countEl) countEl.textContent = [...projects].filter(p => p.getAttribute('data-project-category') === catID).length;
+    });
+}
+
+function initGridToggle() {
+    const triggers = document.querySelectorAll('.tt__left, .tt__right');
+    const contents = document.querySelectorAll('.ps__list-wrap, .ll__wrap');
+    if (!triggers.length) return;
+    triggers.forEach(trigger => {
+        trigger.onclick = function() {
+            const gridId = this.getAttribute('data-grid');
+            triggers.forEach(t => t.classList.remove('active'));
+            contents.forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            contents.forEach(c => { if (c.getAttribute('data-grid') === gridId) c.classList.add('active'); });
+            ScrollTrigger.refresh();
+        };
+    });
+}
+
 // =============================================================================
-// 7. NAVIGAZIONE E SYNC
+// 5. NAVIGAZIONE (VIEW TRANSITIONS + HEAD SYNC)
 // =============================================================================
 function syncHead(newDoc) {
     const currentHead = document.head;
@@ -511,7 +562,7 @@ if (window.navigation) {
 }
 
 // =============================================================================
-// 8. FINALIZE (RESET & RE-INIT)
+// 6. FINALIZE (RESET & RE-INIT)
 // =============================================================================
 function finalizePage(isTransition = false) {
     window.scrollTo(0, 0);
@@ -528,13 +579,16 @@ function finalizePage(isTransition = false) {
         window.lenis.resize(); 
     }
     
-    // Inizializza Nuove Funzioni
-    initCategoryCount();
-    initGridToggle();
-    initMutliFilterSetupMultiMatch();
+    // Inizializza Nuovi Moduli
+    initCircleType();
+    initScaleOnScroll();
+    initCmsNextPowerUp();
 
     // Inizializza Moduli Esistenti
+    initMutliFilterSetupMultiMatch();
     initPsItemHover();
+    initCategoryCount();
+    initGridToggle();
     initMwgEffect029();
     initLogoWallCycle();
     if (typeof initWGTeamModule === "function") initWGTeamModule();
