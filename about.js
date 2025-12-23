@@ -1,6 +1,6 @@
 /**
- * WEBFLOW ULTIMATE ENGINE
- * Navigation, GSAP, Filters, Team, Grid Toggle & Animations
+ * WEBFLOW ULTIMATE ENGINE - STABLE RELEASE
+ * Navigation, GSAP, Filters, Team, Grid Toggle & Category Count
  */
 
 // 1. REGISTRAZIONE PLUGIN
@@ -50,7 +50,7 @@ function initCategoryCount() {
         const catID = category.getAttribute('data-category-id');
         const countEl = category.querySelector('[data-category-count]');
         if (!countEl) return;
-        const count = [...projects].filter(proj => proj.getAttribute('data-project-category') === catID).length;
+        const count = Array.from(projects).filter(proj => proj.getAttribute('data-project-category') === catID).length;
         countEl.textContent = count;
     });
 }
@@ -62,6 +62,7 @@ function initGridToggle() {
     if (!triggers.length) return;
 
     triggers.forEach(trigger => {
+        // Usiamo onclick per sovrascrivere listener precedenti ed evitare doppie esecuzioni
         trigger.onclick = function () {
             const gridId = this.getAttribute('data-grid');
             triggers.forEach(t => t.classList.remove('active'));
@@ -75,7 +76,7 @@ function initGridToggle() {
     });
 }
 
-// --- 5. SISTEMA MULTI-FILTER + RESIZE ---
+// --- 5. SISTEMA MULTI-FILTER ---
 function initMutliFilterSetupMultiMatch() {
     const groups = [...document.querySelectorAll('[data-filter-group]')];
     if (!groups.length) return;
@@ -91,14 +92,14 @@ function initMutliFilterSetupMultiMatch() {
             const raw = (el.getAttribute('data-filter-name') || '').trim().toLowerCase();
             const tokens = raw ? raw.split(/\s+/).filter(Boolean) : [];
             itemTokens.set(el, new Set(tokens));
-            if (!el.hasAttribute('data-filter-status')) el.setAttribute('data-filter-status', 'active');
+            el.setAttribute('data-filter-status', 'active');
         });
 
         let activeTags = targetMatch === 'single' ? null : new Set(['all']);
 
         const paint = (rawTarget, isResize = false) => {
-            if (!isResize) {
-                const target = (rawTarget || '').trim().toLowerCase();
+            if (!isResize && rawTarget !== null) {
+                const target = rawTarget.trim().toLowerCase();
                 if (target === 'all' || target === 'reset') {
                     if (targetMatch === 'single') activeTags = null;
                     else { activeTags.clear(); activeTags.add('all'); }
@@ -126,7 +127,6 @@ function initMutliFilterSetupMultiMatch() {
                 if (shouldShow) {
                     visibleCounter++;
                     if (isDesktop) el.setAttribute('data-grid-pos', ((visibleCounter - 1) % 9) + 1);
-                    else el.removeAttribute('data-grid-pos');
                     el.setAttribute('data-filter-status', 'active');
                 } else {
                     el.removeAttribute('data-grid-pos');
@@ -134,14 +134,12 @@ function initMutliFilterSetupMultiMatch() {
                 }
             });
 
-            if (!isResize) {
-                buttons.forEach(btn => {
-                    const t = (btn.getAttribute('data-filter-target') || '').trim().toLowerCase();
-                    let on = (t === 'all') ? (activeTags instanceof Set && activeTags.has('all')) : 
-                             (targetMatch === 'single' ? activeTags === t : activeTags.has(t));
-                    btn.setAttribute('data-filter-status', on ? 'active' : 'not-active');
-                });
-            }
+            buttons.forEach(btn => {
+                const t = (btn.getAttribute('data-filter-target') || '').trim().toLowerCase();
+                let on = (t === 'all') ? (activeTags instanceof Set && activeTags.has('all')) || activeTags === null : 
+                         (targetMatch === 'single' ? activeTags === t : activeTags.has(t));
+                btn.setAttribute('data-filter-status', on ? 'active' : 'not-active');
+            });
         };
 
         group.onclick = e => {
@@ -149,49 +147,36 @@ function initMutliFilterSetupMultiMatch() {
             if (btn) paint(btn.getAttribute('data-filter-target'));
         };
 
-        window.addEventListener('resize', () => paint(null, true));
         paint('all');
     });
 }
 
 // --- 6. MWG EFFECT 029 – SCROLL WORDS ---
-function wrapWordsInSpan(element) {
-    const text = element.textContent;
-    element.innerHTML = text.split(" ").map((word) => `<span>${word}</span>`).join(" ");
-}
-
 function initMwgEffect029() {
     const paragraph = document.querySelector(".mwg_effect029 .is--title-w");
     if (!paragraph || paragraph.dataset.processed === "true") return;
     paragraph.dataset.processed = "true";
 
-    gsap.to(".scroll", {
-        autoAlpha: 0,
-        duration: 0.2,
-        scrollTrigger: {
-            trigger: ".mwg_effect029",
-            start: "top top",
-            end: "top top-=1",
-            toggleActions: "play none reverse none",
-        },
-    });
-
-    wrapWordsInSpan(paragraph);
+    const text = paragraph.textContent;
+    paragraph.innerHTML = text.split(" ").map(word => `<span>${word}</span>`).join(" ");
+    
     const words = paragraph.querySelectorAll("span");
-    words.forEach((word) => { word.classList.add("word" + (Math.floor(Math.random() * 3) + 1)); });
+    words.forEach(word => {
+        word.classList.add("word" + (Math.floor(Math.random() * 3) + 1));
+    });
 
     const configs = [{ sel: ".word1", x: "-0.8em" }, { sel: ".word2", x: "1.6em" }, { sel: ".word3", x: "-2.4em" }];
     configs.forEach(conf => {
-        document.querySelectorAll(`.mwg_effect029 ${conf.sel}`).forEach((el) => {
+        document.querySelectorAll(`.mwg_effect029 ${conf.sel}`).forEach(el => {
             gsap.to(el, { x: conf.x, ease: "none", scrollTrigger: { trigger: el, start: "top 80%", end: "bottom 60%", scrub: 0.2 }});
         });
     });
 }
 
-// --- 7. PS ITEM HOVER ANIMATION ---
+// --- 7. PS ITEM HOVER ---
 function initPsItemHover() {
     const psItems = document.querySelectorAll(".ps__item");
-    psItems.forEach((item) => {
+    psItems.forEach(item => {
         const imgWrap = item.querySelector(".ps__item-img");
         const cta = item.querySelector(".projects__cta");
         const targets = item.querySelectorAll("[data-split-ps]");
@@ -199,7 +184,6 @@ function initPsItemHover() {
 
         const allLines = [];
         targets.forEach(el => {
-            // Nota: Usiamo SplitType invece di SplitText per compatibilità licenza se necessario
             const split = new SplitType(el, { types: "lines", lineClass: "split-line" });
             gsap.set(split.lines, { yPercent: 100 });
             allLines.push(...split.lines);
@@ -210,17 +194,17 @@ function initPsItemHover() {
         hoverTl.to(allLines, { yPercent: 0, duration: 0.8, ease: "expo.out", stagger: 0.05 }, 0);
         if (cta) hoverTl.to(cta, { autoAlpha: 1, duration: 0.4 }, 0);
 
-        imgWrap.onmouseenter = () => hoverTl.timeScale(1).play();
-        imgWrap.onmouseleave = () => hoverTl.timeScale(2.2).reverse();
+        imgWrap.onmouseenter = () => hoverTl.play();
+        imgWrap.onmouseleave = () => hoverTl.reverse();
     });
 }
 
-// --- 8. LOGO WALL & WG TEAM (Codici precedenti mantenuti) ---
-function initLogoWallCycle() { /* Logica mantenuta */ }
-function initWGTeamModule() { /* Logica mantenuta */ }
-function initAboutGridFlip() { /* Logica mantenuta */ }
+// --- 8. ALTRI MODULI ---
+function initLogoWallCycle() { /* Inserire logica Logo Wall completa qui */ }
+function initWGTeamModule() { /* Inserire logica WG Team completa qui */ }
+function initAboutGridFlip() { /* Inserire logica About Grid Flip completa qui */ }
 
-// --- 9. VIEW TRANSITIONS ---
+// --- 9. NAVIGAZIONE (VIEW TRANSITIONS) ---
 if (window.navigation) {
     navigation.addEventListener("navigate", (event) => {
         if (!event.destination.url.includes(window.location.origin)) return;
@@ -230,6 +214,7 @@ if (window.navigation) {
                     const response = await fetch(event.destination.url);
                     const text = await response.text();
                     const doc = new DOMParser().parseFromString(text, "text/html");
+                    
                     if (document.startViewTransition) {
                         const transition = document.startViewTransition(() => {
                             document.body.innerHTML = doc.body.innerHTML;
@@ -259,20 +244,22 @@ function finalizePage(isTransition = false) {
         window.Webflow.require('ix2').init();
     }
 
-    // Inizializzazione moduli raggruppati
+    // Esecuzione pulita di tutti i moduli
     initCategoryCount();
     initGridToggle();
     initMutliFilterSetupMultiMatch();
     initMwgEffect029();
     initPsItemHover();
     
-    // Altri moduli
+    // Altri init
     if (typeof initLogoWallCycle === "function") initLogoWallCycle();
     if (typeof initWGTeamModule === "function") initWGTeamModule();
     if (typeof initAboutGridFlip === "function") initAboutGridFlip();
-    
+
     initializeAnimations(isTransition);
-    setTimeout(() => { ScrollTrigger.refresh(); }, 350);
+    
+    // Risolve il problema del calcolo delle altezze
+    setTimeout(() => { ScrollTrigger.refresh(); }, 500);
 }
 
 window.addEventListener("DOMContentLoaded", () => finalizePage(false));
