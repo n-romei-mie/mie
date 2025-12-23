@@ -1,9 +1,9 @@
 /**
- * WEBFLOW ULTIMATE ENGINE - FINAL INTEGRATION
- * Features: Navigation, Filters, Team, Words, Wall, Flip, Scale, Circle, CMS Next, Parallax, Scramble, Footer Canvas
+ * WEBFLOW ULTIMATE ENGINE
+ * Features: Navigation, Filters, Team, Words (Fixed), Wall, Flip, Scale, Circle, CMS Next, Parallax, Scramble, Footer Canvas
  */
 
-// 1. REGISTRAZIONE PLUGIN
+// 1. REGISTRAZIONE PLUGIN GLOBALE
 if (typeof gsap !== "undefined") {
     const plugins = [ScrollTrigger, Flip];
     if (typeof SplitText !== "undefined") plugins.push(SplitText);
@@ -12,7 +12,7 @@ if (typeof gsap !== "undefined") {
 }
 
 // =============================================================================
-// HELPER: SAFE REVERT
+// HELPER: SAFE REVERT (PULIZIA HTML PER NAVIGAZIONE)
 // =============================================================================
 function safeSplitRevert(elements, className) {
     if (!elements.length) return;
@@ -32,478 +32,284 @@ function safeSplitRevert(elements, className) {
 }
 
 // =============================================================================
-// 2. PARALLAX SYSTEM (TUO CODICE INTEGRATO)
+// 2. MWG EFFECT 029 – SCROLL WORDS (TUO CODICE NUOVO INTEGRATO)
 // =============================================================================
-function initGlobalParallax() {
-    // Pulizia automatica gestita da gsap.context, ma reinizializziamo a ogni pagina
-    let mm = gsap.matchMedia();
-
-    mm.add({
-        isMobile: "(max-width:479px)",
-        isMobileLandscape: "(max-width:767px)",
-        isTablet: "(max-width:991px)",
-        isDesktop: "(min-width:992px)",
-    }, (ctx) => {
-        let { isMobile, isMobileLandscape, isTablet } = ctx.conditions;
-
-        // Scoped context per facile cleanup
-        ScrollTrigger.batch('[data-parallax="trigger"]', {
-            onEnter: batch => {
-                batch.forEach((trigger) => {
-                    let disable = trigger.getAttribute("data-parallax-disable");
-                    if ((disable === "mobile" && isMobile) ||
-                        (disable === "mobileLandscape" && isMobileLandscape) ||
-                        (disable === "tablet" && isTablet)) {
-                        return;
-                    }
-
-                    let target = trigger.querySelector('[data-parallax="target"]') || trigger;
-                    let direction = trigger.getAttribute("data-parallax-direction") || "vertical";
-                    let axis = direction === "horizontal" ? "xPercent" : "yPercent";
-                    let scrubAttr = trigger.getAttribute("data-parallax-scrub");
-                    let scrubVal = scrubAttr ? parseFloat(scrubAttr) : true;
-                    let startVal = parseFloat(trigger.getAttribute("data-parallax-start") || 20);
-                    let endVal = parseFloat(trigger.getAttribute("data-parallax-end") || -20);
-                    let scrollStart = trigger.getAttribute("data-parallax-scroll-start") || "top bottom";
-                    let scrollEnd = trigger.getAttribute("data-parallax-scroll-end") || "bottom top";
-
-                    gsap.fromTo(target, 
-                        { [axis]: startVal }, 
-                        {
-                            [axis]: endVal,
-                            ease: "none",
-                            scrollTrigger: {
-                                trigger: trigger,
-                                start: `clamp(${scrollStart})`,
-                                end: `clamp(${scrollEnd})`,
-                                scrub: scrubVal,
-                            },
-                        }
-                    );
-                });
-            }
-        });
-    });
+function wrapWordsInSpan(element) {
+    const text = element.textContent;
+    element.innerHTML = text
+        .split(' ')
+        .map(word => `<span>${word}</span>`)
+        .join(' ');
 }
 
-// =============================================================================
-// 3. TEXT SPLIT ANIMATIONS (LINES & EYEBROW)
-// =============================================================================
-// Gestione resize per SplitText
-let splitResizeHandler = null;
-const splitData = new Map();
-
-function initSplitTextAnimations() {
-    if (typeof SplitText === "undefined") return;
-
-    // --- A. LINES UNMASK (data-split) ---
-    function createSplit(el) {
-        const alreadyAnimated = el._hasAnimated === true;
-        // Revert preventivo
-        const existing = splitData.get(el);
-        if (existing) { existing.split.revert(); existing.st.kill(); }
-
-        const split = new SplitText(el, { type: "lines", mask: "lines", linesClass: "split-line" });
-        let st;
-
-        if (alreadyAnimated) {
-            gsap.set(split.lines, { yPercent: 0 });
-            st = ScrollTrigger.create({
-                trigger: el, start: "top bottom",
-                onEnter: () => gsap.set(split.lines, { yPercent: 0 })
-            });
-        } else {
-            gsap.set(split.lines, { yPercent: 100 });
-            st = ScrollTrigger.create({
-                trigger: el, start: "top 80%",
-                onEnter: () => {
-                    if (el._hasAnimated) return;
-                    el._hasAnimated = true;
-                    gsap.to(split.lines, { yPercent: 0, duration: 0.8, ease: "expo.out", stagger: 0.08 });
-                }
-            });
-        }
-        splitData.set(el, { split, st });
-    }
-
-    const elements = gsap.utils.toArray("[data-split]");
-    elements.forEach(createSplit);
-
-    // --- B. EYEBROW CHARS ---
-    const eyebrowElements = gsap.utils.toArray(".eyebrow");
-    eyebrowElements.forEach((el) => {
-        // Pulizia precedente se necessario
-        if(el._splitInstance) el._splitInstance.revert();
-        
-        const split = new SplitText(el, { type: "chars", mask: "chars", charsClass: "eyebrow-char" });
-        el._splitInstance = split;
-        const chars = split.chars;
-        
-        gsap.set(chars, { opacity: 0 });
-        ScrollTrigger.create({
-            trigger: el, start: "top 85%", once: true,
-            onEnter: () => {
-                gsap.to(chars, { opacity: 1, duration: 0.05, ease: "power1.out", stagger: { amount: 0.4, from: "random" } });
-            }
-        });
-    });
-
-    // Gestione Resize Unica
-    if (splitResizeHandler) window.removeEventListener("resize", splitResizeHandler);
-    splitResizeHandler = () => { elements.forEach(createSplit); ScrollTrigger.refresh(); };
-    window.addEventListener("resize", splitResizeHandler);
-}
-
-// =============================================================================
-// 4. SCRAMBLE TEXT HOVER
-// =============================================================================
-function initScrambleTextAnimations() {
-    if (typeof gsap === "undefined" || typeof ScrambleTextPlugin === "undefined") return;
-
-    function highlightRandomChar(el) {
-        const chars = el.querySelectorAll(".char");
-        if (!chars.length) return;
-        chars.forEach(c => (c.style.color = ""));
-        const rand = chars[Math.floor(Math.random() * chars.length)];
-        if (rand) rand.style.color = "#C3FF00";
-    }
-
-    const targets = document.querySelectorAll('[data-scramble-hover="link"]');
-    targets.forEach(target => {
-        const textEl = target.querySelector('[data-scramble-hover="target"]');
-        if (!textEl) return;
-
-        const originalText = textEl.textContent;
-        const customHoverText = textEl.getAttribute("data-scramble-text");
-
-        // Use SplitType or SplitText based on availability for char wrapping
-        if (typeof SplitText !== "undefined") {
-            new SplitText(textEl, { type: "words, chars", wordsClass: "word", charsClass: "char" });
-        } else if (typeof SplitType !== "undefined") {
-             new SplitType(textEl, { types: "words, chars", wordClass: "word", charClass: "char" });
-        }
-
-        // Clean previous listeners
-        const newTarget = target.cloneNode(true);
-        target.parentNode.replaceChild(newTarget, target);
-        const newTextEl = newTarget.querySelector('[data-scramble-hover="target"]'); // Re-select inside clone
-
-        newTarget.addEventListener("mouseenter", () => {
-            gsap.to(newTextEl, {
-                duration: 1,
-                scrambleText: { text: customHoverText || originalText, chars: "_X" },
-                onUpdate: () => highlightRandomChar(newTextEl)
-            });
-        });
-
-        newTarget.addEventListener("mouseleave", () => {
-            gsap.to(newTextEl, {
-                duration: 0.6,
-                scrambleText: { text: originalText, speed: 2, chars: "X_" },
-                onUpdate: () => highlightRandomChar(newTextEl)
-            });
-        });
-    });
-}
-
-// =============================================================================
-// 5. FOOTER CANVAS SCRUBBER (PROTECTED)
-// =============================================================================
-// Variabili globali per pulizia Footer
-let footerScrollHandler = null;
-let footerResizeObserver = null;
-
-function initFooterCanvasScrubber() {
-    let e = document.getElementById("footercanvas");
-    if (!e || !e.getContext) return;
-
-    // CLEANUP PRECEDENTE
-    if (footerScrollHandler) window.removeEventListener("scroll", footerScrollHandler);
-    if (footerResizeObserver) { footerResizeObserver.disconnect(); footerResizeObserver = null; }
-
-    let t = e.getContext("2d", { alpha: !1, desynchronized: !0 });
-    t.imageSmoothingEnabled = !0, t.imageSmoothingQuality = "high";
+function initMwgEffect029() {
+    // Selettore doppio per sicurezza (.paragraph dal tuo snippet, .is--title-w dal vecchio)
+    const paragraph = document.querySelector('.mwg_effect029 .paragraph, .mwg_effect029 .is--title-w');
     
-    let n = e.dataset.base || "",
-        a = (e.dataset.ext || "jpg").toLowerCase(),
-        i = parseInt(e.dataset.frames || "45", 10),
-        r = parseInt(e.dataset.pad || "5", 10),
-        l = parseInt(e.dataset.start || "0", 10);
-        
-    if (!n || !i) return;
+    // Se non c'è l'elemento, usciamo subito per evitare errori
+    if (!paragraph) return;
 
-    let o = e.parentElement || e, s = 0, c = 0, f = 1, d = 0, h = 0;
-
-    function u() {
-        f = Math.min(window.devicePixelRatio || 1, 2);
-        let n = Math.max(1, Math.round(o.clientWidth * f)),
-            a = Math.max(1, Math.round(o.clientHeight * f));
-        (e.width !== n || e.height !== a) && (e.width = n, e.height = a, t.setTransform(1, 0, 0, 1, 0, 0), t.scale(f, f)), s = Math.max(1, o.clientWidth), c = Math.max(1, o.clientHeight)
+    // Reset se stiamo tornando sulla pagina per evitare span dentro span
+    if (paragraph.dataset.processed === "true") {
+        paragraph.innerHTML = paragraph.textContent;
     }
+    paragraph.dataset.processed = "true";
 
-    let $ = new Map, m = new Map;
-    async function g(e) {
-        if (e < l || e > l + (i - 1)) return null;
-        if ($.has(e)) return $.get(e);
-        if (m.has(e)) return m.get(e);
-        let s = n + String(e).padStart(r, "0") + "." + a;
-        let c = fetch(s, { cache: "force-cache" })
-            .then(e => e.ok ? e.blob() : null)
-            .then(createImageBitmap)
-            .then(t => {
-                if(t) {
-                    if($.size > 60) { let key = $.keys().next().value; $.get(key)?.close?.(); $.delete(key); }
-                    $.set(e, t);
-                    m.delete(e);
-                    if((!d || !h)) { d = t.width; h = t.height; }
-                    return t;
-                }
-                return null;
-            }).catch(() => { m.delete(e); return null; });
-        return m.set(e, c), c;
-    }
-
-    let _ = { start: null, end: null };
-    function b(e) {
-        let n = Math.max(l, e - 20), a = Math.min(l + (i - 1), e + 20);
-        if (n !== _.start || a !== _.end) {
-            _ = { start: n, end: a };
-            for (let r = n; r <= a; r += 10) {
-                setTimeout(() => { for (let e = r; e <= Math.min(a, r + 9); e++) $.has(e) || m.has(e) || g(e) }, 0)
-            }
+    // Animazione Scroll Icon
+    gsap.to('.scroll', {
+        autoAlpha: 0,
+        duration: 0.2,
+        scrollTrigger: {
+            trigger: '.mwg_effect029',
+            start: 'top top',
+            end: 'top top-=1',
+            toggleActions: "play none reverse none"
         }
-    }
+    });
 
-    function v(e) {
-        if (!e || !s || !c) return;
-        let n = (d || e.width) / (h || e.height), a = s / c, i_draw, r_draw;
-        n > a ? i_draw = (r_draw = c) * n : r_draw = (i_draw = s) / n;
-        t.clearRect(0, 0, s, c);
-        t.drawImage(e, (s - i_draw) * .5, (c - r_draw) * .5, i_draw, r_draw);
-    }
+    // Avvolge le parole
+    wrapWordsInSpan(paragraph);
 
-    let x = l, w = null, p = !1;
-    function y() { w && v(w) }
-    
-    let C = (function e(t) {
-        let n = t;
-        for (; n && !n.classList?.contains("footer__video-scrub");) n = n.parentElement;
-        return n || document.body
-    })(e);
+    // Assegna classi random
+    const words = paragraph.querySelectorAll('span');
+    words.forEach(word => {
+        word.classList.add('word' + Math.floor(Math.random() * 4));
+    });
 
-    u();
-    for (let E = l; E < l + Math.min(20, i); E++) g(E);
-    b(l); 
-    g(l).then(e => { e && (w = e, y()) });
-
-    // SCROLL LISTENER ASSEGNATO ALLA VARIABILE GLOBALE
-    footerScrollHandler = function() {
-        let rect = C.getBoundingClientRect();
-        let top = window.scrollY + rect.top;
-        let total = Math.max(1, C.offsetHeight - window.innerHeight);
-        let progress = Math.min(1, Math.max(0, (window.scrollY - top) / total));
-        
-        let frame = Math.min(l + (i - 1), Math.max(l, Math.round(progress * (i - 1)) + l));
-        if (frame !== x) {
-            b(x = frame);
-            if (!p) {
-                p = true;
-                requestAnimationFrame(async () => {
-                    let img = $.get(x);
-                    if (!img) {
-                        // fallback logic omitted for brevity, keeping it simple
-                        img = await g(x);
-                    }
-                    if (img) { w = img; v(img); }
-                    p = false;
-                });
+    // Animazioni GSAP (Esattamente come da tuo snippet)
+    document.querySelectorAll('.mwg_effect029 .word1').forEach(el => {
+        gsap.to(el, {
+            x: '-0.8em',
+            ease: 'none',
+            scrollTrigger: {
+                trigger: el,
+                start: 'top 80%',
+                end: 'bottom 60%',
+                scrub: 0.2
             }
-        }
-    };
-    window.addEventListener("scroll", footerScrollHandler, { passive: true });
+        });
+    });
 
-    if (typeof ResizeObserver !== "undefined") {
-        footerResizeObserver = new ResizeObserver(() => { u(); y(); });
-        footerResizeObserver.observe(o);
-    }
+    document.querySelectorAll('.mwg_effect029 .word2').forEach(el => {
+        gsap.to(el, {
+            x: '1.6em',
+            ease: 'none',
+            scrollTrigger: {
+                trigger: el,
+                start: 'top 80%',
+                end: 'bottom 60%',
+                scrub: 0.2
+            }
+        });
+    });
+
+    document.querySelectorAll('.mwg_effect029 .word3').forEach(el => {
+        gsap.to(el, {
+            x: '-2.4em',
+            ease: 'none',
+            scrollTrigger: {
+                trigger: el,
+                start: 'top 80%',
+                end: 'bottom 60%',
+                scrub: 0.2
+            }
+        });
+    });
 }
 
 // =============================================================================
-// 6. LOGO WALL CYCLE (TUO CODICE ORIGINALE)
+// 3. LOGO WALL CYCLE (VERSIONE CORRETTA)
 // =============================================================================
 function initLogoWallCycle() {
-  if (typeof gsap === "undefined" || typeof ScrollTrigger === "undefined") return;
+    if (typeof gsap === "undefined" || typeof ScrollTrigger === "undefined") return;
 
-  const loopDelay = 1.5; // Loop Duration
-  const duration = 0.9; // Animation Duration
+    const loopDelay = 1.5; 
+    const duration = 0.9; 
 
-  document.querySelectorAll("[data-logo-wall-cycle-init]").forEach((root) => {
-    // Evita re-init se non desiderato, ma con view transitions potrebbe servire rieseguire.
-    // Se vuoi bloccare re-init: if (root.dataset.initialized) return; root.dataset.initialized = "true";
-    
-    const list = root.querySelector("[data-logo-wall-list]");
-    if (!list) return;
+    document.querySelectorAll("[data-logo-wall-cycle-init]").forEach((root) => {
+        const list = root.querySelector("[data-logo-wall-list]");
+        if (!list) return;
 
-    const items = Array.from(list.querySelectorAll("[data-logo-wall-item]"));
-    if (!items.length) return;
+        const items = Array.from(list.querySelectorAll("[data-logo-wall-item]"));
+        if (!items.length) return;
 
-    const shuffleFront =
-      root.getAttribute("data-logo-wall-shuffle") !== "false";
+        const shuffleFront = root.getAttribute("data-logo-wall-shuffle") !== "false";
+        
+        // Prendiamo solo i target originali, escludendo cloni precedenti
+        const originalTargets = items.map((item) => {
+            return item.querySelector("[data-logo-wall-target]:not(.cloned-logo)");
+        }).filter(Boolean);
 
-    const originalTargets = items
-      .map((item) => item.querySelector("[data-logo-wall-target]"))
-      .filter(Boolean);
+        let visibleItems = [], visibleCount = 0, pool = [], pattern = [], patternIndex = 0, tl;
 
-    let visibleItems = [];
-    let visibleCount = 0;
-    let pool = [];
-    let pattern = [];
-    let patternIndex = 0;
-    let tl;
+        function isVisible(el) { return window.getComputedStyle(el).display !== "none"; }
 
-    function isVisible(el) {
-      return window.getComputedStyle(el).display !== "none";
-    }
+        function shuffleArray(arr) {
+            const a = arr.slice();
+            for (let i = a.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [a[i], a[j]] = [a[j], a[i]];
+            }
+            return a;
+        }
 
-    function shuffleArray(arr) {
-      const a = arr.slice();
-      for (let i = a.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [a[i], a[j]] = [a[j], a[i]];
-      }
-      return a;
-    }
+        function setup() {
+            if (tl) tl.kill();
 
-    function setup() {
-      if (tl) {
-        tl.kill();
-      }
+            visibleItems = items.filter(isVisible);
+            visibleCount = visibleItems.length;
+            pattern = shuffleArray(Array.from({ length: visibleCount }, (_, i) => i));
+            patternIndex = 0;
 
-      visibleItems = items.filter(isVisible);
-      visibleCount = visibleItems.length;
+            // PULIZIA TOTALE: Svuota i contenitori padre
+            items.forEach((item) => {
+                const parent = item.querySelector("[data-logo-wall-target-parent]") || item;
+                parent.innerHTML = '';
+            });
 
-      pattern = shuffleArray(
-        Array.from({ length: visibleCount }, (_, i) => i)
-      );
-      patternIndex = 0;
+            // Creazione Pool iniziale (con classe cloned per riconoscerli)
+            pool = originalTargets.map((n) => {
+                const c = n.cloneNode(true);
+                c.classList.add('cloned-logo');
+                return c;
+            });
 
-      // remove all injected targets
-      items.forEach((item) => {
-        item
-          .querySelectorAll("[data-logo-wall-target]")
-          .forEach((old) => old.remove());
-      });
+            let front, rest;
+            if (shuffleFront) {
+                const shuffledAll = shuffleArray(pool);
+                front = shuffledAll.slice(0, visibleCount);
+                rest = shuffleArray(shuffledAll.slice(visibleCount));
+                pool = front.concat(rest);
+            } else {
+                front = pool.slice(0, visibleCount);
+                rest = shuffleArray(pool.slice(visibleCount));
+                pool = front.concat(rest);
+            }
 
-      pool = originalTargets.map((n) => n.cloneNode(true));
+            for (let i = 0; i < visibleCount; i++) {
+                const parent = visibleItems[i].querySelector("[data-logo-wall-target-parent]") || visibleItems[i];
+                parent.appendChild(pool.shift());
+            }
 
-      let front, rest;
-      if (shuffleFront) {
-        const shuffledAll = shuffleArray(pool);
-        front = shuffledAll.slice(0, visibleCount);
-        rest = shuffleArray(shuffledAll.slice(visibleCount));
-        pool = front.concat(rest);
-      } else {
-        front = pool.slice(0, visibleCount);
-        rest = shuffleArray(pool.slice(visibleCount));
-        pool = front.concat(rest);
-      }
+            tl = gsap.timeline({ repeat: -1, repeatDelay: loopDelay });
+            tl.call(swapNext);
+            tl.play();
+        }
 
-      for (let i = 0; i < visibleCount; i++) {
-        const parent =
-          visibleItems[i].querySelector("[data-logo-wall-target-parent]") ||
-          visibleItems[i];
-        parent.appendChild(pool.shift());
-      }
+        function swapNext() {
+            const nowCount = items.filter(isVisible).length;
+            if (nowCount !== visibleCount) { setup(); return; }
+            
+            // Se pool vuoto, rigenera
+            if (!pool.length) {
+                 pool = originalTargets.map((n) => {
+                    const c = n.cloneNode(true);
+                    c.classList.add('cloned-logo');
+                    return c;
+                });
+            }
 
-      tl = gsap.timeline({ repeat: -1, repeatDelay: loopDelay });
-      tl.call(swapNext);
-      tl.play();
-    }
+            const idx = pattern[patternIndex % visibleCount];
+            patternIndex++;
 
-    function swapNext() {
-      const nowCount = items.filter(isVisible).length;
-      if (nowCount !== visibleCount) {
+            const container = visibleItems[idx];
+            if(!container) return; // Safety check
+
+            const parent = container.querySelector("[data-logo-wall-target-parent]") || container;
+            const existing = parent.querySelectorAll("[data-logo-wall-target]");
+            
+            // Evita accumulo se l'animazione precedente non è finita
+            if (existing.length > 1) return;
+
+            const current = parent.querySelector("[data-logo-wall-target]");
+            const incoming = pool.shift();
+
+            gsap.set(incoming, { yPercent: 50, autoAlpha: 0 });
+            parent.appendChild(incoming);
+
+            if (current) {
+                gsap.to(current, {
+                    yPercent: -50, autoAlpha: 0, duration, ease: "expo.inOut",
+                    onComplete: () => { current.remove(); pool.push(current); },
+                });
+            }
+            gsap.to(incoming, { yPercent: 0, autoAlpha: 1, duration, delay: 0.1, ease: "expo.inOut" });
+        }
+
         setup();
-        return;
-      }
-      if (!pool.length) return;
 
-      const idx = pattern[patternIndex % visibleCount];
-      patternIndex++;
-
-      const container = visibleItems[idx];
-      const parent =
-        container.querySelector("[data-logo-wall-target-parent]") ||
-        container.querySelector("*:has(> [data-logo-wall-target])") ||
-        container;
-
-      const existing = parent.querySelectorAll("[data-logo-wall-target]");
-      if (existing.length > 1) return;
-
-      const current = parent.querySelector("[data-logo-wall-target]");
-      const incoming = pool.shift();
-
-      gsap.set(incoming, { yPercent: 50, autoAlpha: 0 });
-      parent.appendChild(incoming);
-
-      if (current) {
-        gsap.to(current, {
-          yPercent: -50,
-          autoAlpha: 0,
-          duration,
-          ease: "expo.inOut",
-          onComplete: () => {
-            current.remove();
-            pool.push(current);
-          },
+        ScrollTrigger.create({
+            trigger: root,
+            start: "top bottom", end: "bottom top",
+            onEnter: () => tl && tl.play(), onLeave: () => tl && tl.pause(),
+            onEnterBack: () => tl && tl.play(), onLeaveBack: () => tl && tl.pause(),
         });
-      }
 
-      gsap.to(incoming, {
-        yPercent: 0,
-        autoAlpha: 1,
-        duration,
-        delay: 0.1,
-        ease: "expo.inOut",
-      });
+        document.addEventListener("visibilitychange", () => {
+            if (!tl) return;
+            document.hidden ? tl.pause() : tl.play();
+        });
+    });
+}
+
+// =============================================================================
+// 4. ABOUT GRID FLIP
+// =============================================================================
+function initAboutGridFlip() {
+    const grid = document.querySelector(".about__grid-wrap");
+    const items = grid ? grid.querySelectorAll(".ag__img") : [];
+    const btnBig = document.querySelector(".ag__trigger.is--big");
+    const btnSmall = document.querySelector(".ag__trigger.is--small");
+
+    if (!grid || !items.length || (!btnBig && !btnSmall)) return;
+
+    function updateButtons(isBig) {
+        if (btnBig) gsap.to(btnBig, { opacity: isBig ? 1 : 0.5, duration: 0.3, overwrite: true, pointerEvents: isBig ? "none" : "auto" });
+        if (btnSmall) gsap.to(btnSmall, { opacity: isBig ? 0.5 : 1, duration: 0.3, overwrite: true, pointerEvents: isBig ? "auto" : "none" });
     }
 
-    setup();
+    grid.classList.add("is--big");
+    grid.classList.remove("is--small");
+    updateButtons(true);
 
-    ScrollTrigger.create({
-      trigger: root,
-      start: "top bottom",
-      end: "bottom top",
-      onEnter: () => tl && tl.play(),
-      onLeave: () => tl && tl.pause(),
-      onEnterBack: () => tl && tl.play(),
-      onLeaveBack: () => tl && tl.pause(),
-    });
+    let isAnimating = false;
 
-    document.addEventListener("visibilitychange", () => {
-      if (!tl) return;
-      document.hidden ? tl.pause() : tl.play();
-    });
-  });
+    function forceLayoutUpdate() {
+        if (window.ScrollTrigger) ScrollTrigger.refresh();
+        if (window.lenis) window.lenis.resize();
+        window.dispatchEvent(new Event("resize"));
+    }
+
+    function switchLayout(toBig) {
+        if (isAnimating) return;
+        const targetClass = toBig ? "is--big" : "is--small";
+        if (grid.classList.contains(targetClass)) return;
+
+        const state = Flip.getState(items);
+        isAnimating = true;
+        updateButtons(toBig);
+
+        if (toBig) {
+            grid.classList.add("is--big"); grid.classList.remove("is--small");
+        } else {
+            grid.classList.add("is--small"); grid.classList.remove("is--big");
+        }
+
+        forceLayoutUpdate();
+
+        Flip.from(state, {
+            duration: 1.3, ease: "power4.inOut", nested: true, scale: true,
+            onComplete() { isAnimating = false; forceLayoutUpdate(); }
+        });
+    }
+
+    if (btnBig) btnBig.onclick = () => switchLayout(true);
+    if (btnSmall) btnSmall.onclick = () => switchLayout(false);
 }
 
 // =============================================================================
-// 7. ALTRI MODULI (Words, Team, Filter, Flip, Scale, Circle, CMS Next)
+// 5. MODULI ESISTENTI (Filter, Hover, Team, Parallax, Footer, etc.)
 // =============================================================================
-function initMwgEffect029() {
-    const paragraph = document.querySelector(".mwg_effect029 .is--title-w");
-    if (!paragraph) return;
-    if(paragraph.dataset.processed === "true") paragraph.innerHTML = paragraph.textContent; 
-    const scrollIcon = document.querySelector(".scroll");
-    if (scrollIcon) { gsap.to(".scroll", { autoAlpha: 0, duration: 0.2, scrollTrigger: { trigger: ".mwg_effect029", start: "top top", end: "top top-=1", toggleActions: "play none reverse none" }}); }
-    paragraph.dataset.processed = "true";
-    paragraph.innerHTML = paragraph.textContent.split(" ").map(w => `<span>${w}</span>`).join(" ");
-    paragraph.querySelectorAll("span").forEach(w => w.classList.add("word" + (Math.floor(Math.random() * 3) + 1)));
-    [{ s: ".word1", x: "-0.8em" }, { s: ".word2", x: "1.6em" }, { s: ".word3", x: "-2.4em" }].forEach(c => {
-        const targets = paragraph.querySelectorAll(c.s);
-        if(targets.length) gsap.to(targets, { x: c.x, ease: "none", scrollTrigger: { trigger: paragraph, start: "top 80%", end: "bottom 60%", scrub: 0.2 }});
-    });
-}
 
 function initCategoryCount() {
     const categories = document.querySelectorAll('[data-category-id]');
@@ -594,19 +400,12 @@ function initPsItemHover() {
         const allLines = [];
         targets.forEach(el => {
             const split = new SplitType(el, { types: "lines", lineClass: "split-line" });
-            el.splitInstance = split; 
-            el.classList.add('split-done-hover');
+            el.splitInstance = split; el.classList.add('split-done-hover');
             split.lines.forEach(line => {
-                const wrapper = document.createElement('div');
-                wrapper.classList.add('line-wrapper');
-                wrapper.style.overflow = 'hidden';
-                wrapper.style.display = 'block';
-                wrapper.style.lineHeight = 'inherit';
-                line.parentNode.insertBefore(wrapper, line);
-                wrapper.appendChild(line);
+                const wrapper = document.createElement('div'); wrapper.classList.add('line-wrapper'); wrapper.style.overflow = 'hidden'; wrapper.style.display = 'block'; wrapper.style.lineHeight = 'inherit';
+                line.parentNode.insertBefore(wrapper, line); wrapper.appendChild(line);
             });
-            gsap.set(split.lines, { yPercent: 105 });
-            allLines.push(...split.lines);
+            gsap.set(split.lines, { yPercent: 105 }); allLines.push(...split.lines);
         });
         if (cta) gsap.set(cta, { autoAlpha: 0 });
         const hoverTl = gsap.timeline({ paused: true });
@@ -615,27 +414,6 @@ function initPsItemHover() {
         imgWrap.onmouseenter = () => hoverTl.timeScale(1).play();
         imgWrap.onmouseleave = () => hoverTl.timeScale(2.2).reverse();
     });
-}
-
-function initAboutGridFlip() {
-    const grid = document.querySelector(".about__grid-wrap");
-    const items = grid?.querySelectorAll(".ag__img");
-    const btnBig = document.querySelector(".ag__trigger.is--big");
-    const btnSmall = document.querySelector(".ag__trigger.is--small");
-    if (!grid || !items || !items.length) return;
-    const updateButtons = (isBig) => {
-        if (btnBig) gsap.to(btnBig, { opacity: isBig ? 1 : 0.5, pointerEvents: isBig ? "none" : "auto" });
-        if (btnSmall) gsap.to(btnSmall, { opacity: isBig ? 0.5 : 1, pointerEvents: isBig ? "auto" : "none" });
-    };
-    const switchLayout = (toBig) => {
-        const state = Flip.getState(items);
-        toBig ? (grid.classList.add("is--big"), grid.classList.remove("is--small")) : (grid.classList.add("is--small"), grid.classList.remove("is--big"));
-        updateButtons(toBig);
-        Flip.from(state, { duration: 1.3, ease: "power4.inOut", scale: true, onComplete: () => ScrollTrigger.refresh() });
-    };
-    if (btnBig) btnBig.onclick = () => switchLayout(true);
-    if (btnSmall) btnSmall.onclick = () => switchLayout(false);
-    updateButtons(grid.classList.contains("is--big"));
 }
 
 function initWGTeamModule() {
@@ -664,58 +442,96 @@ function initWGTeamModule() {
     });
 }
 
-function initCircleType() { const circleEl = document.getElementById('circlep'); if (circleEl && typeof CircleType !== 'undefined') new CircleType(circleEl); }
-
-function initScaleOnScroll() {
-    const elements = gsap.utils.toArray("[data-scale]");
-    if (!elements.length) return;
-    elements.forEach((el) => {
-        gsap.killTweensOf(el);
-        gsap.set(el, { scale: 1.2 });
-        gsap.to(el, { scale: 1, ease: "power2.inOut", duration: 1.5, scrollTrigger: { trigger: el, start: "top 90%", toggleActions: "play none none reverse" } });
+function initGlobalParallax() {
+    let mm = gsap.matchMedia();
+    mm.add({ isMobile: "(max-width:479px)", isMobileLandscape: "(max-width:767px)", isTablet: "(max-width:991px)", isDesktop: "(min-width:992px)" }, (ctx) => {
+        let { isMobile, isMobileLandscape, isTablet } = ctx.conditions;
+        ScrollTrigger.batch('[data-parallax="trigger"]', {
+            onEnter: batch => {
+                batch.forEach((trigger) => {
+                    let disable = trigger.getAttribute("data-parallax-disable");
+                    if ((disable === "mobile" && isMobile) || (disable === "mobileLandscape" && isMobileLandscape) || (disable === "tablet" && isTablet)) return;
+                    let target = trigger.querySelector('[data-parallax="target"]') || trigger;
+                    let direction = trigger.getAttribute("data-parallax-direction") || "vertical";
+                    let axis = direction === "horizontal" ? "xPercent" : "yPercent";
+                    let scrubVal = trigger.getAttribute("data-parallax-scrub") ? parseFloat(trigger.getAttribute("data-parallax-scrub")) : true;
+                    let startVal = parseFloat(trigger.getAttribute("data-parallax-start") || 20);
+                    let endVal = parseFloat(trigger.getAttribute("data-parallax-end") || -20);
+                    let scrollStart = trigger.getAttribute("data-parallax-scroll-start") || "top bottom";
+                    let scrollEnd = trigger.getAttribute("data-parallax-scroll-end") || "bottom top";
+                    gsap.fromTo(target, { [axis]: startVal }, { [axis]: endVal, ease: "none", scrollTrigger: { trigger: trigger, start: `clamp(${scrollStart})`, end: `clamp(${scrollEnd})`, scrub: scrubVal } });
+                });
+            }
+        });
     });
 }
 
-let cmsNextScrollHandler = null;
-function initCmsNextPowerUp() {
-    if (typeof $ === "undefined") return;
-    if (cmsNextScrollHandler) { window.removeEventListener("scroll", cmsNextScrollHandler); cmsNextScrollHandler = null; }
-    const componentsData = [];
-    $("[tr-cmsnext-element='component']").each(function () {
-        let componentEl = $(this), cmsListEl = componentEl.find(".w-dyn-items").first(), cmsItemEl = cmsListEl.children(), currentItemEl, noResultEl = componentEl.find("[tr-cmsnext-element='no-result']");
-        cmsItemEl.each(function () { if ($(this).find(".w--current").length) currentItemEl = $(this); });
-        let nextItemEl = currentItemEl ? currentItemEl.next() : $(), prevItemEl = currentItemEl ? currentItemEl.prev() : $();
-        if (componentEl.attr("tr-cmsnext-loop") === "true") { if (!nextItemEl.length) nextItemEl = cmsItemEl.first(); if (!prevItemEl.length) prevItemEl = cmsItemEl.last(); }
-        let displayEl = nextItemEl;
-        if (componentEl.attr("tr-cmsnext-showprev") === "true") displayEl = prevItemEl;
-        if (componentEl.attr("tr-cmsnext-showall") === "true") { prevItemEl.addClass("is-prev"); currentItemEl && currentItemEl.addClass("is-current"); nextItemEl.addClass("is-next"); } else { cmsItemEl.not(displayEl).remove(); if (!displayEl.length) noResultEl.show(); if (!displayEl.length && componentEl.attr("tr-cmsnext-hideempty") === "true") componentEl.hide(); }
-        const sectionEl = componentEl.closest(".section__next-project");
-        let targetItemEl = nextItemEl;
-        if (componentEl.attr("tr-cmsnext-showprev") === "true") targetItemEl = prevItemEl;
-        if (sectionEl.length && targetItemEl && targetItemEl.length) { componentsData.push({ sectionEl, componentEl, targetItemEl, triggered: false }); }
-    });
-    if (componentsData.length) {
-        let isRunning = false;
-        cmsNextScrollHandler = () => {
-            if (isRunning) return;
-            isRunning = true;
-            window.requestAnimationFrame(() => {
-                componentsData.forEach((item) => {
-                    if (item.triggered) return;
-                    if (!document.contains(item.sectionEl[0])) return;
-                    const sectionRect = item.sectionEl[0].getBoundingClientRect();
-                    const componentHeight = item.componentEl.outerHeight() || 0;
-                    if (sectionRect.bottom <= componentHeight + 1 && sectionRect.bottom >= 0) {
-                        const linkEl = item.targetItemEl.find("a").first();
-                        const href = linkEl.attr("href");
-                        if (href) { item.triggered = true; window.location.href = href; }
-                    }
-                });
-                isRunning = false;
+let splitResizeHandler = null; const splitData = new Map();
+function initSplitTextAnimations() {
+    if (typeof SplitText === "undefined") return;
+    function createSplit(el) {
+        const alreadyAnimated = el._hasAnimated === true;
+        const existing = splitData.get(el); if (existing) { existing.split.revert(); existing.st.kill(); }
+        const split = new SplitText(el, { type: "lines", mask: "lines", linesClass: "split-line" });
+        let st;
+        if (alreadyAnimated) { gsap.set(split.lines, { yPercent: 0 }); st = ScrollTrigger.create({ trigger: el, start: "top bottom", onEnter: () => gsap.set(split.lines, { yPercent: 0 }) }); }
+        else {
+            gsap.set(split.lines, { yPercent: 100 }); st = ScrollTrigger.create({
+                trigger: el, start: "top 80%", onEnter: () => { if (el._hasAnimated) return; el._hasAnimated = true; gsap.to(split.lines, { yPercent: 0, duration: 0.8, ease: "expo.out", stagger: 0.08 }); }
             });
-        };
-        window.addEventListener("scroll", cmsNextScrollHandler, { passive: true });
+        }
+        splitData.set(el, { split, st });
     }
+    const elements = gsap.utils.toArray("[data-split]"); elements.forEach(createSplit);
+    const eyebrowElements = gsap.utils.toArray(".eyebrow");
+    eyebrowElements.forEach((el) => {
+        if (el._splitInstance) el._splitInstance.revert();
+        const split = new SplitText(el, { type: "chars", mask: "chars", charsClass: "eyebrow-char" }); el._splitInstance = split; const chars = split.chars; gsap.set(chars, { opacity: 0 });
+        ScrollTrigger.create({ trigger: el, start: "top 85%", once: true, onEnter: () => { gsap.to(chars, { opacity: 1, duration: 0.05, ease: "power1.out", stagger: { amount: 0.4, from: "random" } }); } });
+    });
+    if (splitResizeHandler) window.removeEventListener("resize", splitResizeHandler); splitResizeHandler = () => { elements.forEach(createSplit); ScrollTrigger.refresh(); }; window.addEventListener("resize", splitResizeHandler);
+}
+
+function initScrambleTextAnimations() {
+    if (typeof gsap === "undefined" || typeof ScrambleTextPlugin === "undefined") return;
+    function highlightRandomChar(el) {
+        const chars = el.querySelectorAll(".char"); if (!chars.length) return;
+        chars.forEach(c => (c.style.color = "")); const rand = chars[Math.floor(Math.random() * chars.length)]; if (rand) rand.style.color = "#C3FF00";
+    }
+    document.querySelectorAll('[data-scramble-hover="link"]').forEach(target => {
+        const textEl = target.querySelector('[data-scramble-hover="target"]'); if (!textEl) return;
+        const originalText = textEl.textContent; const customHoverText = textEl.getAttribute("data-scramble-text");
+        if (typeof SplitText !== "undefined") new SplitText(textEl, { type: "words, chars", wordsClass: "word", charsClass: "char" }); else if (typeof SplitType !== "undefined") new SplitType(textEl, { types: "words, chars", wordClass: "word", charClass: "char" });
+        const newTarget = target.cloneNode(true); target.parentNode.replaceChild(newTarget, target);
+        const newTextEl = newTarget.querySelector('[data-scramble-hover="target"]');
+        newTarget.addEventListener("mouseenter", () => { gsap.to(newTextEl, { duration: 1, scrambleText: { text: customHoverText || originalText, chars: "_X" }, onUpdate: () => highlightRandomChar(newTextEl) }); });
+        newTarget.addEventListener("mouseleave", () => { gsap.to(newTextEl, { duration: 0.6, scrambleText: { text: originalText, speed: 2, chars: "X_" }, onUpdate: () => highlightRandomChar(newTextEl) }); });
+    });
+}
+
+let footerScrollHandler = null; let footerResizeObserver = null;
+function initFooterCanvasScrubber() {
+    let e = document.getElementById("footercanvas"); if (!e || !e.getContext) return;
+    if (footerScrollHandler) window.removeEventListener("scroll", footerScrollHandler); if (footerResizeObserver) { footerResizeObserver.disconnect(); footerResizeObserver = null; }
+    let t = e.getContext("2d", { alpha: !1, desynchronized: !0 }); t.imageSmoothingEnabled = !0; t.imageSmoothingQuality = "high";
+    let n = e.dataset.base || "", a = (e.dataset.ext || "jpg").toLowerCase(), i = parseInt(e.dataset.frames || "45", 10), r = parseInt(e.dataset.pad || "5", 10), l = parseInt(e.dataset.start || "0", 10); if (!n || !i) return;
+    let o = e.parentElement || e, s = 0, c = 0, f = 1, d = 0, h = 0;
+    function u() { f = Math.min(window.devicePixelRatio || 1, 2); let n = Math.max(1, Math.round(o.clientWidth * f)), a = Math.max(1, Math.round(o.clientHeight * f)); (e.width !== n || e.height !== a) && (e.width = n, e.height = a, t.setTransform(1, 0, 0, 1, 0, 0), t.scale(f, f)), s = Math.max(1, o.clientWidth), c = Math.max(1, o.clientHeight) }
+    let $ = new Map, m = new Map;
+    async function g(e) { if (e < l || e > l + (i - 1)) return null; if ($.has(e)) return $.get(e); if (m.has(e)) return m.get(e); let s = n + String(e).padStart(r, "0") + "." + a; let c = fetch(s, { cache: "force-cache" }).then(e => e.ok ? e.blob() : null).then(createImageBitmap).then(t => { if (t) { if ($.size > 60) { let key = $.keys().next().value; $.get(key)?.close?.(); $.delete(key); } $.set(e, t); m.delete(e); if ((!d || !h)) { d = t.width; h = t.height; } return t; } return null; }).catch(() => { m.delete(e); return null; }); return m.set(e, c), c; }
+    let _ = { start: null, end: null }; function b(e) { let n = Math.max(l, e - 20), a = Math.min(l + (i - 1), e + 20); if (n !== _.start || a !== _.end) { _ = { start: n, end: a }; for (let r = n; r <= a; r += 10) { setTimeout(() => { for (let e = r; e <= Math.min(a, r + 9); e++) $.has(e) || m.has(e) || g(e) }, 0) } } }
+    function v(e) { if (!e || !s || !c) return; let n = (d || e.width) / (h || e.height), a = s / c, i_draw, r_draw; n > a ? i_draw = (r_draw = c) * n : r_draw = (i_draw = s) / n; t.clearRect(0, 0, s, c); t.drawImage(e, (s - i_draw) * .5, (c - r_draw) * .5, i_draw, r_draw); }
+    let x = l, w = null, p = !1; function y() { w && v(w) } let C = (function e(t) { let n = t; for (; n && !n.classList?.contains("footer__video-scrub");) n = n.parentElement; return n || document.body })(e); u(); for (let E = l; E < l + Math.min(20, i); E++) g(E); b(l); g(l).then(e => { e && (w = e, y()) });
+    footerScrollHandler = function () { let rect = C.getBoundingClientRect(); let top = window.scrollY + rect.top; let total = Math.max(1, C.offsetHeight - window.innerHeight); let progress = Math.min(1, Math.max(0, (window.scrollY - top) / total)); let frame = Math.min(l + (i - 1), Math.max(l, Math.round(progress * (i - 1)) + l)); if (frame !== x) { b(x = frame); if (!p) { p = true; requestAnimationFrame(async () => { let img = $.get(x); if (!img) { img = await g(x); } if (img) { w = img; v(img); } p = false; }); } } }; window.addEventListener("scroll", footerScrollHandler, { passive: true }); if (typeof ResizeObserver !== "undefined") { footerResizeObserver = new ResizeObserver(() => { u(); y(); }); footerResizeObserver.observe(o); }
+}
+
+function initCircleType() { const circleEl = document.getElementById('circlep'); if (circleEl && typeof CircleType !== 'undefined') new CircleType(circleEl); }
+function initScaleOnScroll() {
+    const elements = gsap.utils.toArray("[data-scale]"); if (!elements.length) return;
+    elements.forEach((el) => { gsap.killTweensOf(el); gsap.set(el, { scale: 1.2 }); gsap.to(el, { scale: 1, ease: "power2.inOut", duration: 1.5, scrollTrigger: { trigger: el, start: "top 90%", toggleActions: "play none none reverse" } }); });
+}
+let cmsNextScrollHandler = null; function initCmsNextPowerUp() {
+    if (typeof $ === "undefined") return; if (cmsNextScrollHandler) { window.removeEventListener("scroll", cmsNextScrollHandler); cmsNextScrollHandler = null; } const componentsData = []; $("[tr-cmsnext-element='component']").each(function () { let componentEl = $(this), cmsListEl = componentEl.find(".w-dyn-items").first(), cmsItemEl = cmsListEl.children(), currentItemEl, noResultEl = componentEl.find("[tr-cmsnext-element='no-result']"); cmsItemEl.each(function () { if ($(this).find(".w--current").length) currentItemEl = $(this); }); let nextItemEl = currentItemEl ? currentItemEl.next() : $(), prevItemEl = currentItemEl ? currentItemEl.prev() : $(); if (componentEl.attr("tr-cmsnext-loop") === "true") { if (!nextItemEl.length) nextItemEl = cmsItemEl.first(); if (!prevItemEl.length) prevItemEl = cmsItemEl.last(); } let displayEl = nextItemEl; if (componentEl.attr("tr-cmsnext-showprev") === "true") displayEl = prevItemEl; if (componentEl.attr("tr-cmsnext-showall") === "true") { prevItemEl.addClass("is-prev"); currentItemEl && currentItemEl.addClass("is-current"); nextItemEl.addClass("is-next"); } else { cmsItemEl.not(displayEl).remove(); if (!displayEl.length) noResultEl.show(); if (!displayEl.length && componentEl.attr("tr-cmsnext-hideempty") === "true") componentEl.hide(); } const sectionEl = componentEl.closest(".section__next-project"); let targetItemEl = nextItemEl; if (componentEl.attr("tr-cmsnext-showprev") === "true") targetItemEl = prevItemEl; if (sectionEl.length && targetItemEl && targetItemEl.length) { componentsData.push({ sectionEl, componentEl, targetItemEl, triggered: false }); } }); if (componentsData.length) { let isRunning = false; cmsNextScrollHandler = () => { if (isRunning) return; isRunning = true; window.requestAnimationFrame(() => { componentsData.forEach((item) => { if (item.triggered) return; if (!document.contains(item.sectionEl[0])) return; const sectionRect = item.sectionEl[0].getBoundingClientRect(); const componentHeight = item.componentEl.outerHeight() || 0; if (sectionRect.bottom <= componentHeight + 1 && sectionRect.bottom >= 0) { const linkEl = item.targetItemEl.find("a").first(); const href = linkEl.attr("href"); if (href) { item.triggered = true; window.location.href = href; } } }); isRunning = false; }); }; window.addEventListener("scroll", cmsNextScrollHandler, { passive: true }); }
 }
 
 function initializeAnimations(isTransition = false) {
@@ -794,25 +610,30 @@ function finalizePage(isTransition = false) {
     if (window.Webflow) { window.Webflow.destroy(); window.Webflow.ready(); window.Webflow.require('ix2').init(); }
     if (window.lenis) { window.lenis.scrollTo(0, { immediate: true }); window.lenis.resize(); }
 
-    initCategoryCount();
-    initGridToggle();
-    initMutliFilterSetupMultiMatch();
-    initPsItemHover();
-    initMwgEffect029();
-    initLogoWallCycle();
-    initGlobalParallax();
-    initSplitTextAnimations();
-    initScrambleTextAnimations();
-    initFooterCanvasScrubber();
-    initCircleType();
-    initScaleOnScroll();
-    initCmsNextPowerUp();
+    // FONT LOADING: Aspetta il caricamento font per evitare i glitch
+    document.fonts.ready.then(() => {
+        initCategoryCount();
+        initGridToggle();
+        initMutliFilterSetupMultiMatch();
+        initPsItemHover();
+        
+        // Modules
+        initMwgEffect029();
+        initLogoWallCycle();
+        initAboutGridFlip();
+        initGlobalParallax();
+        initSplitTextAnimations();
+        initScrambleTextAnimations();
+        initFooterCanvasScrubber();
+        initCircleType();
+        initScaleOnScroll();
+        initCmsNextPowerUp();
 
-    if (typeof initWGTeamModule === "function") initWGTeamModule();
-    if (typeof initAboutGridFlip === "function") initAboutGridFlip();
+        if (typeof initWGTeamModule === "function") initWGTeamModule();
 
-    initializeAnimations(isTransition);
-    setTimeout(() => { ScrollTrigger.refresh(); }, 400);
+        initializeAnimations(isTransition);
+        setTimeout(() => { ScrollTrigger.refresh(); }, 400);
+    });
 }
 
 window.addEventListener("DOMContentLoaded", () => finalizePage(false));
