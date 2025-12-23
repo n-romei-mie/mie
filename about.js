@@ -1,6 +1,6 @@
 /**
- * WEBFLOW ULTIMATE ENGINE - FINAL STABLE
- * Fixes: Event Listener Accumulation & SplitType Recursion
+ * WEBFLOW ULTIMATE ENGINE - FINAL FIX
+ * Fixes: Filter Reset Button Visibility & Hover Animation Glitches
  */
 
 // 1. REGISTRAZIONE PLUGIN
@@ -9,18 +9,18 @@ if (typeof gsap !== "undefined") {
 }
 
 // =============================================================================
-// FUNZIONI DI SUPPORTO GLOBAL (Safe Revert)
+// HELPER: SAFE REVERT (PULIZIA HTML)
 // =============================================================================
+// Questa funzione pulisce l'HTML dai tag di SplitType prima di ri-applicarli
 function safeSplitRevert(elements, className) {
     if (!elements.length) return;
     elements.forEach(el => {
-        // Se esiste già un'istanza o una classe che indica lo split, proviamo a pulire
         if (el.splitInstance) {
             el.splitInstance.revert();
             el.splitInstance = null;
         }
         el.classList.remove(className);
-        // Pulizia manuale extra per sicurezza (rimuove wrapper residui)
+        // Rimuove eventuali wrapper residui generati manualmente
         const wrappers = el.querySelectorAll('.line-wrapper');
         wrappers.forEach(w => {
             const parent = w.parentNode;
@@ -31,7 +31,7 @@ function safeSplitRevert(elements, className) {
 }
 
 // =============================================================================
-// 2. ANIMAZIONI INGRESSO (data-transition)
+// 2. ANIMAZIONI INGRESSO PAGE LOAD (data-transition)
 // =============================================================================
 function initializeAnimations(isTransition = false) {
     const dynamicDelay = isTransition ? 1.1 : 0.2;
@@ -44,14 +44,14 @@ function initializeAnimations(isTransition = false) {
     }
 
     const elementsToAnimate = document.querySelectorAll('[data-transition]');
-    
-    // PULIZIA PREVENTIVA: Se torniamo indietro, resettiamo gli elementi
+    // Pulizia preventiva
     safeSplitRevert(elementsToAnimate, 'split-done');
 
     elementsToAnimate.forEach(el => {
         const split = new SplitType(el, { types: 'lines', lineClass: 'line-inner' });
-        el.splitInstance = split; // Salviamo l'istanza per il revert futuro
+        el.splitInstance = split; 
 
+        // Avvolgiamo le linee per l'effetto maschera
         split.lines.forEach(line => {
             const wrapper = document.createElement('div');
             wrapper.classList.add('line-wrapper');
@@ -71,37 +71,30 @@ function initializeAnimations(isTransition = false) {
 }
 
 // =============================================================================
-// 3. SISTEMA MULTI-FILTER (CORRETTO)
+// 3. SISTEMA MULTI-FILTER (FIX RESET BUTTON)
 // =============================================================================
-// Variabile globale per tenere traccia dell'handler di resize attivo
 let currentResizeHandler = null;
 
 function initMutliFilterSetupMultiMatch() {
     const groups = [...document.querySelectorAll('[data-filter-group]')];
     if (!groups.length) return;
 
-    // Rimuoviamo il vecchio listener resize se esiste per evitare duplicati
     if (currentResizeHandler) {
         window.removeEventListener('resize', currentResizeHandler);
         currentResizeHandler = null;
     }
-
-    // Funzione di resize unica che cicla su tutti i gruppi attivi
     currentResizeHandler = () => {
         groups.forEach(group => {
-            // Triggeriamo un "repaint" fittizio
             const activeBtn = group.querySelector('[data-filter-target][data-filter-status="active"]');
-            if (activeBtn) activeBtn.click(); // Simula click per ricalcolare layout
+            if (activeBtn) activeBtn.click();
         });
     };
     window.addEventListener('resize', currentResizeHandler);
 
     groups.forEach(group => {
-        // Cloniamo il nodo per eliminare TUTTI i vecchi listener (click, etc)
         const oldGroup = group;
         const newGroup = oldGroup.cloneNode(true);
         oldGroup.parentNode.replaceChild(newGroup, oldGroup);
-        // Da ora usiamo newGroup
 
         const targetMatch = (newGroup.getAttribute('data-filter-target-match') || 'multi').trim().toLowerCase();
         const nameMatch = (newGroup.getAttribute('data-filter-name-match') || 'multi').trim().toLowerCase();
@@ -122,7 +115,6 @@ function initMutliFilterSetupMultiMatch() {
             const raw = (el.getAttribute('data-filter-name') || '').trim().toLowerCase();
             const tokens = raw ? raw.split(/\s+/).filter(Boolean) : [];
             itemTokens.set(el, new Set(tokens));
-            // Reset status visivo
             el.setAttribute('data-filter-status', 'active');
             el.removeAttribute('data-grid-pos');
         });
@@ -148,10 +140,13 @@ function initMutliFilterSetupMultiMatch() {
             const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
             let visibleCounter = 0;
 
+            // Determina se ci sono filtri attivi (diverso da 'all')
+            const isFiltered = activeTags !== null && !(activeTags instanceof Set && activeTags.has('all'));
+
             items.forEach(el => {
                 const tokens = itemTokens.get(el);
                 let shouldShow = true;
-                if (activeTags !== null && !(activeTags instanceof Set && activeTags.has('all'))) {
+                if (isFiltered) {
                     const selected = targetMatch === 'single' ? [activeTags] : [...activeTags];
                     shouldShow = nameMatch === 'single' ? selected.every(tag => tokens.has(tag)) : selected.some(tag => tokens.has(tag));
                 }
@@ -169,28 +164,33 @@ function initMutliFilterSetupMultiMatch() {
 
             buttons.forEach(btn => {
                 const t = (btn.getAttribute('data-filter-target') || '').trim().toLowerCase();
-                let on = (t === 'all') ? (activeTags instanceof Set && activeTags.has('all')) || activeTags === null : 
-                         (targetMatch === 'single' ? activeTags === t : activeTags.has(t));
-                btn.setAttribute('data-filter-status', on ? 'active' : 'not-active');
+                
+                // LOGICA DEL PULSANTE RESET
+                if (t === 'reset') {
+                     // Se stiamo filtrando, il reset è attivo/visibile. Se siamo su All, è spento.
+                     btn.setAttribute('data-filter-status', isFiltered ? 'active' : 'not-active');
+                } else {
+                    // Logica normale per gli altri bottoni
+                    let on = (t === 'all') ? !isFiltered : 
+                             (targetMatch === 'single' ? activeTags === t : (activeTags instanceof Set && activeTags.has(t)));
+                    btn.setAttribute('data-filter-status', on ? 'active' : 'not-active');
+                }
             });
             
-            // Importante: forza il refresh di ScrollTrigger perché l'altezza della pagina è cambiata
             ScrollTrigger.refresh();
         };
 
-        // Usiamo onclick invece di addEventListener per evitare stack
         newGroup.onclick = (e) => {
             const btn = e.target.closest('[data-filter-target]');
             if (btn) paint(btn.getAttribute('data-filter-target'));
         };
 
-        // Init Paint
         paint('all');
     });
 }
 
 // =============================================================================
-// 4. ANIMAZIONI GSAP HOVER (CORRETTO CON REVERT)
+// 4. ANIMAZIONI GSAP HOVER (FIXED: WRAPPER AGGIUNTI)
 // =============================================================================
 function initPsItemHover() {
     const psItems = document.querySelectorAll(".ps__item");
@@ -203,15 +203,32 @@ function initPsItemHover() {
 
         if (!imgWrap || !targets.length) return;
 
-        // 1. REVERT: Puliamo eventuali split precedenti se esistono
+        // 1. PULIZIA: Rimuove split precedenti e wrapper per evitare nesting infinito
         safeSplitRevert(targets, 'split-done-hover');
 
         const allLines = [];
+        
         targets.forEach(el => {
+            // 2. SPLIT
             const split = new SplitType(el, { types: "lines", lineClass: "split-line" });
-            el.splitInstance = split; // Salviamo istanza
+            el.splitInstance = split; 
             el.classList.add('split-done-hover');
             
+            // 3. WRAPPING (CRUCIALE PER EVITARE GLITCH E "TAGLI")
+            // Senza questo wrapper con overflow hidden, l'animazione yPercent non maschera il testo
+            split.lines.forEach(line => {
+                const wrapper = document.createElement('div');
+                wrapper.classList.add('line-wrapper'); // Usa la stessa classe del CSS globale o una specifica
+                // Applica stili inline per sicurezza assoluta
+                wrapper.style.overflow = 'hidden';
+                wrapper.style.display = 'block';
+                wrapper.style.lineHeight = 'inherit'; // Mantiene l'altezza riga corretta
+                
+                line.parentNode.insertBefore(wrapper, line);
+                wrapper.appendChild(line);
+            });
+
+            // 4. STATO INIZIALE
             gsap.set(split.lines, { yPercent: 105 });
             allLines.push(...split.lines);
         });
@@ -222,24 +239,21 @@ function initPsItemHover() {
         hoverTl.to(allLines, { yPercent: 0, duration: 0.8, ease: "expo.out", stagger: 0.05 }, 0);
         if (cta) hoverTl.to(cta, { autoAlpha: 1, duration: 0.4, ease: "power2.out" }, 0);
 
-        // Usiamo onmouseenter/onmouseleave diretti per sovrascrivere i vecchi
         imgWrap.onmouseenter = () => hoverTl.timeScale(1).play();
         imgWrap.onmouseleave = () => hoverTl.timeScale(2.2).reverse();
     });
 }
 
 // =============================================================================
-// 5. ALTRI MODULI (Words, Team, Wall, Count, Flip, Toggle)
+// 5. ALTRI MODULI
 // =============================================================================
 function initMwgEffect029() {
     const triggerEl = document.querySelector(".mwg_effect029");
     const paragraph = document.querySelector(".mwg_effect029 .is--title-w");
-    
     if (!triggerEl || !paragraph) return;
     
-    // Reset se necessario
     if(paragraph.dataset.processed === "true") {
-        paragraph.innerHTML = paragraph.textContent; // Reset brutale del contenuto
+        paragraph.innerHTML = paragraph.textContent; 
         paragraph.dataset.processed = "false";
     }
 
@@ -301,10 +315,8 @@ function initGridToggle() {
 function initLogoWallCycle() {
     const roots = document.querySelectorAll("[data-logo-wall-cycle-init]");
     roots.forEach((root) => {
-        // Reset rapido se esiste già
         if (root.dataset.initialized === "true") return; 
         root.dataset.initialized = "true";
-        
         const list = root.querySelector("[data-logo-wall-list]");
         const items = Array.from(list?.querySelectorAll("[data-logo-wall-item]") || []);
         if (!items.length) return;
@@ -381,7 +393,7 @@ function initWGTeamModule() {
 }
 
 // =============================================================================
-// 6. NAVIGAZIONE (VIEW TRANSITIONS + HEAD SYNC)
+// 6. NAVIGAZIONE E SYNC
 // =============================================================================
 function syncHead(newDoc) {
     const currentHead = document.head;
@@ -406,9 +418,7 @@ if (window.navigation) {
                     const response = await fetch(event.destination.url);
                     const text = await response.text();
                     const doc = new DOMParser().parseFromString(text, "text/html");
-                    
                     syncHead(doc);
-
                     if (document.startViewTransition) {
                         const transition = document.startViewTransition(() => {
                             document.body.innerHTML = doc.body.innerHTML;
@@ -427,35 +437,39 @@ if (window.navigation) {
 }
 
 // =============================================================================
-// 7. FINALIZE & RESET (MASTER CONTROLLER)
+// 7. FINALIZE (RESET & RE-INIT)
 // =============================================================================
 function finalizePage(isTransition = false) {
     window.scrollTo(0, 0);
-    
-    // 1. Kill GSAP/ScrollTrigger
     ScrollTrigger.getAll().forEach(t => t.kill());
     gsap.killTweensOf("*");
 
-    // 2. Reset Webflow & Lenis
-    if (window.Webflow) { window.Webflow.destroy(); window.Webflow.ready(); window.Webflow.require('ix2').init(); }
-    if (window.lenis) { window.lenis.scrollTo(0, { immediate: true }); window.lenis.resize(); }
+    if (window.Webflow) {
+        window.Webflow.destroy();
+        window.Webflow.ready();
+        window.Webflow.require('ix2').init();
+    }
+    if (window.lenis) { 
+        window.lenis.scrollTo(0, { immediate: true }); 
+        window.lenis.resize(); 
+    }
     
-    // 3. Esecuzione Moduli
-    initMwgEffect029();
-    initLogoWallCycle();
-    initAboutGridFlip();
-    initCategoryCount();
-    initGridToggle();
+    // Ordine di inizializzazione
     initMutliFilterSetupMultiMatch();
     initPsItemHover();
-    initWGTeamModule();
     
-    // 4. Animazioni ingresso
+    initMwgEffect029();
+    initCategoryCount();
+    initGridToggle();
+    if (typeof initLogoWallCycle === "function") initLogoWallCycle();
+    if (typeof initWGTeamModule === "function") initWGTeamModule();
+    if (typeof initAboutGridFlip === "function") initAboutGridFlip();
+    
     initializeAnimations(isTransition);
-    
-    // 5. Refresh finale (ritardato per sicurezza)
     setTimeout(() => { ScrollTrigger.refresh(); }, 400);
 }
 
-// Avvio Iniziale
 window.addEventListener("DOMContentLoaded", () => finalizePage(false));
+window.addEventListener("resize", () => {
+    if (document.querySelector('[data-filter-group]')) initMutliFilterSetupMultiMatch();
+});
