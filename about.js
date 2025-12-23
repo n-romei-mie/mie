@@ -1,666 +1,1748 @@
-/**
- * WEBFLOW ULTIMATE ENGINE - FINAL PRODUCTION
- * Features: Navigation, Filters, Team, Words, Flip, Scale, Circle, CMS Next, Parallax, Scramble, Footer, LOGO WALL
- */
+(function() {
+  'use strict';
 
-// 1. REGISTRAZIONE PLUGIN GLOBALE
-if (typeof gsap !== "undefined") {
-    const plugins = [ScrollTrigger, Flip];
-    if (typeof SplitText !== "undefined") plugins.push(SplitText);
-    if (typeof ScrambleTextPlugin !== "undefined") plugins.push(ScrambleTextPlugin);
-    gsap.registerPlugin(...plugins);
+  // ============================================================================
+  // GLOBAL VARIABLES
+  // ============================================================================
+  
+  // Register ScrollTrigger plugin immediately
+  if (typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined') {
+    gsap.registerPlugin(ScrollTrigger);
+  }
+  
+  // Store instances for cleanup
+  let parallaxContext = null;
+  let lenisInstance = null;
+  let sketchInstance = null;
+  let pixelateInstances = [];
+  let mwgEffect005Cleanup = null;
+  let aboutSliderCleanup = null;
+  let homeCanvasCleanup = null;
+  let homeTimeCleanup = null;
+  let lenisRafId = null;
+  let isTransitioning = false;
+
+  function unlockScrollAfterLenisReady() {
+    const finish = () => unlockScroll();
+    if (!lenisInstance) {
+      finish();
+      return;
+    }
+    let attempts = 0;
+    const tick = () => {
+      attempts += 1;
+      if (typeof lenisInstance.raf === 'function') {
+        lenisInstance.raf(performance.now());
+      }
+      if (attempts >= 2) {
+        finish();
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  function ensureLenisRunning() {
+    if (!lenisInstance) return;
+    if (typeof lenisInstance.start === 'function') {
+      lenisInstance.start();
+    }
+    if (typeof lenisInstance.raf === 'function') {
+      lenisInstance.raf(performance.now());
+    }
+    if (!lenisRafId) {
+      const loop = (time) => {
+        if (lenisInstance) {
+          lenisInstance.raf(time);
+        }
+        lenisRafId = requestAnimationFrame(loop);
+      };
+      lenisRafId = requestAnimationFrame(loop);
+    }
+  }
+
+  // ============================================================================
+  // UTILITY FUNCTIONS
+  // ============================================================================
+
+  function lockScroll() {
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+    if (lenisInstance && typeof lenisInstance.stop === 'function') {
+      lenisInstance.stop();
+    }
+  }
+
+  function unlockScroll() {
+    document.documentElement.style.overflow = '';
+    document.body.style.overflow = '';
+    if (lenisInstance && typeof lenisInstance.start === 'function') {
+      lenisInstance.start();
+    }
+  }
+
+function resetWebflow(data) {
+  const parser = new DOMParser();
+  const dom = parser.parseFromString(data.next.html, "text/html");
+  const webflowPageId = dom.querySelector("html").getAttribute("data-wf-page");
+
+  document.querySelector("html").setAttribute("data-wf-page", webflowPageId);
+
+  if (window.Webflow) {
+    try {
+      window.Webflow.destroy();
+      window.Webflow.ready();
+      const ix2 = window.Webflow.require && window.Webflow.require("ix2");
+      if (ix2 && typeof ix2.init === "function") {
+        ix2.init();
+      }
+    } catch (e) {
+      // Silently ignore if Webflow is not fully available
+    }
+  }
 }
 
-// =============================================================================
-// HELPER: SAFE REVERT (PULIZIA HTML PER NAVIGAZIONE)
-// =============================================================================
-function safeSplitRevert(elements, className) {
-    if (!elements.length) return;
-    elements.forEach(el => {
-        if (el.splitInstance) {
-            el.splitInstance.revert();
-            el.splitInstance = null;
-        }
-        el.classList.remove(className);
-        const wrappers = el.querySelectorAll('.line-wrapper');
-        wrappers.forEach(w => {
-            const parent = w.parentNode;
-            while (w.firstChild) parent.insertBefore(w.firstChild, w);
-            parent.removeChild(w);
-        });
-    });
+
+
+class Sketch {
+  constructor(opts) {
+    // Guard: ensure Three.js is loaded before using it
+    if (typeof THREE === 'undefined') {
+      return;
+    }
+
+    this.scene = new THREE.Scene();
+    this.vertex = `varying vec2 vUv;void main() {vUv = uv;gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );}`;
+    this.fragment = opts.fragment;
+    this.uniforms = opts.uniforms;
+    this.renderer = new THREE.WebGLRenderer();
+    this.width = window.innerWidth;
+    this.height = window.innerHeight;
+    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setSize(this.width, this.height);
+    this.renderer.setClearColor(0xeeeeee, 1);
+    this.duration = opts.duration || 1;
+    this.debug = opts.debug || false;
+    this.easing = opts.easing || 'easeInOut';
+    this.clicker = document.getElementById("next");
+    this.clicker2 = document.getElementById("prev");
+    this.container = document.getElementById("slider");
+    
+    if (!this.container) {
+      return;
+    }
+    
+    // Clean up any existing canvas in the container before adding new one
+    const existingCanvas = this.container.querySelector('canvas');
+    if (existingCanvas) {
+      try {
+        this.container.removeChild(existingCanvas);
+      } catch (e) {
+        // Canvas might already be removed
+      }
+    }
+    
+    // Ensure the container can anchor the canvas
+    if (getComputedStyle(this.container).position === 'static') {
+      this.container.style.position = 'relative';
+    }
+
+    // Make the renderer fill the container without affecting layout
+    this.renderer.domElement.style.position = 'absolute';
+    this.renderer.domElement.style.top = '0';
+    this.renderer.domElement.style.left = '0';
+    this.renderer.domElement.style.width = '100%';
+    this.renderer.domElement.style.height = '100%';
+    this.renderer.domElement.style.display = 'block';
+    this.renderer.domElement.style.pointerEvents = 'none';
+
+    this.images = JSON.parse(this.container.getAttribute('data-images'));
+    this.width = this.container.offsetWidth;
+    this.height = this.container.offsetHeight;
+    this.container.appendChild(this.renderer.domElement);
+    this.camera = new THREE.PerspectiveCamera(
+      70,
+      window.innerWidth / window.innerHeight,
+      0.001,
+      1000
+    );
+    this.camera.position.set(0, 0, 2);
+    this.time = 0;
+    this.current = 0;
+    this.textures = [];
+    this.paused = true;
+    this.isRunning = false;
+    
+    this.initiate(() => {
+      this.setupResize();
+      this.settings();
+      this.addObjects();
+      this.resize();
+      this.clickEvent();
+      this.clickEvent2();
+      this.play();
+    });
+  }
+
+  initiate(cb) {
+    const promises = [];
+    let that = this;
+    this.images.forEach((url, i) => {
+      let promise = new Promise(resolve => {
+        that.textures[i] = new THREE.TextureLoader().load(url, resolve);
+      });
+      promises.push(promise);
+    });
+    Promise.all(promises).then(() => {
+      cb();
+    });
+  }
+
+  clickEvent() {
+    if (this.clicker) {
+      this.nextHandler = () => this.next();
+      this.clicker.addEventListener('click', this.nextHandler);
+    }
+  }
+
+  clickEvent2() {
+    if (this.clicker2) {
+      this.prevHandler = () => this.prev();
+      this.clicker2.addEventListener('click', this.prevHandler);
+    }
+  }
+
+  settings() {
+    let that = this;
+    if (this.debug && window.dat) {
+      this.gui = new dat.GUI();
+    }
+    this.settings = {
+      progress: 0.5
+    };
+    Object.keys(this.uniforms).forEach((item) => {
+      this.settings[item] = this.uniforms[item].value;
+      if (this.debug && this.gui) {
+        this.gui.add(this.settings, item, this.uniforms[item].min, this.uniforms[item].max, 0.01);
+      }
+    });
+  }
+
+  setupResize() {
+    this.resizeHandler = this.resize.bind(this);
+    window.addEventListener("resize", this.resizeHandler);
+  }
+
+  resize() {
+    if (!this.container) return;
+    
+    this.width = this.container.offsetWidth;
+    this.height = this.container.offsetHeight;
+    this.renderer.setSize(this.width, this.height);
+    this.camera.aspect = this.width / this.height;
+    
+    if (this.textures[0]) {
+      // image cover
+      this.imageAspect = this.textures[0].image.height / this.textures[0].image.width;
+      let a1;
+      let a2;
+      if (this.height / this.width > this.imageAspect) {
+        a1 = (this.width / this.height) * this.imageAspect;
+        a2 = 1;
+      } else {
+        a1 = 1;
+        a2 = (this.height / this.width) / this.imageAspect;
+      }
+      this.material.uniforms.resolution.value.x = this.width;
+      this.material.uniforms.resolution.value.y = this.height;
+      this.material.uniforms.resolution.value.z = a1;
+      this.material.uniforms.resolution.value.w = a2;
+    }
+    
+    const dist = this.camera.position.z;
+    const height = 1;
+    this.camera.fov = 2 * (180 / Math.PI) * Math.atan(height / (2 * dist));
+    if (this.plane) {
+      this.plane.scale.x = this.camera.aspect;
+      this.plane.scale.y = 1;
+    }
+    this.camera.updateProjectionMatrix();
+  }
+
+  addObjects() {
+    let that = this;
+    this.material = new THREE.ShaderMaterial({
+      extensions: {
+        derivatives: "#extension GL_OES_standard_derivatives : enable"
+      },
+      side: THREE.DoubleSide,
+      uniforms: {
+        time: {
+          type: "f",
+          value: 0
+        },
+        progress: {
+          type: "f",
+          value: 0
+        },
+        border: {
+          type: "f",
+          value: 0
+        },
+        intensity: {
+          type: "f",
+          value: 0
+        },
+        scaleX: {
+          type: "f",
+          value: 40
+        },
+        scaleY: {
+          type: "f",
+          value: 40
+        },
+        transition: {
+          type: "f",
+          value: 40
+        },
+        swipe: {
+          type: "f",
+          value: 0
+        },
+        width: {
+          type: "f",
+          value: 0
+        },
+        radius: {
+          type: "f",
+          value: 0
+        },
+        texture1: {
+          type: "f",
+          value: this.textures[0]
+        },
+        texture2: {
+          type: "f",
+          value: this.textures[1]
+        },
+        displacement: {
+          type: "f",
+          value: new THREE.TextureLoader().load('https://uploads-ssl.webflow.com/5dc1ae738cab24fef27d7fd2/5dcae913c897156755170518_disp1.jpg')
+        },
+        resolution: {
+          type: "v4",
+          value: new THREE.Vector4()
+        },
+      },
+      vertexShader: this.vertex,
+      fragmentShader: this.fragment
+    });
+    this.geometry = new THREE.PlaneGeometry(1, 1, 2, 2);
+    this.plane = new THREE.Mesh(this.geometry, this.material);
+    this.scene.add(this.plane);
+  }
+
+  stop() {
+    this.paused = true;
+  }
+
+  play() {
+    this.paused = false;
+    this.render();
+  }
+
+  next() {
+    if (this.isRunning) return;
+    this.isRunning = true;
+    let len = this.textures.length;
+    let nextTexture = this.textures[(this.current + 1) % len];
+    this.material.uniforms.texture2.value = nextTexture;
+    let tl = new TimelineMax();
+    tl.to(this.material.uniforms.progress, this.duration, {
+      value: 1,
+      ease: Power2[this.easing],
+      onComplete: () => {
+        this.current = (this.current + 1) % len;
+        this.material.uniforms.texture1.value = nextTexture;
+        this.material.uniforms.progress.value = 0;
+        this.isRunning = false;
+      }
+    });
+  }
+
+  prev() {
+    if (this.isRunning) return;
+    this.isRunning = true;
+    let len = this.textures.length;
+    const prevIndex = this.current === 0 ? len - 1 : this.current - 1;
+    let prevTexture = this.textures[prevIndex];
+    this.material.uniforms.texture2.value = prevTexture;
+    let tl = new TimelineMax();
+    tl.to(this.material.uniforms.progress, this.duration, {
+      value: 1,
+      ease: Power2[this.easing],
+      onComplete: () => {
+        this.current = prevIndex;
+        this.material.uniforms.texture1.value = prevTexture;
+        this.material.uniforms.progress.value = 0;
+        this.isRunning = false;
+      }
+    });
+  }
+
+  render() {
+    if (this.paused) return;
+    this.time += 0.05;
+    this.material.uniforms.time.value = this.time;
+    Object.keys(this.uniforms).forEach((item) => {
+      this.material.uniforms[item].value = this.settings[item];
+    });
+    requestAnimationFrame(this.render.bind(this));
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  destroy() {
+    this.stop();
+    
+    // Remove event listeners
+    if (this.clicker && this.nextHandler) {
+      this.clicker.removeEventListener('click', this.nextHandler);
+      this.nextHandler = null;
+    }
+    if (this.clicker2 && this.prevHandler) {
+      this.clicker2.removeEventListener('click', this.prevHandler);
+      this.prevHandler = null;
+    }
+    if (this.resizeHandler) {
+      window.removeEventListener("resize", this.resizeHandler);
+      this.resizeHandler = null;
+    }
+    
+    // Remove canvas from DOM first
+    if (this.container && this.renderer && this.renderer.domElement) {
+      try {
+        if (this.renderer.domElement.parentNode === this.container) {
+          this.container.removeChild(this.renderer.domElement);
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+    }
+    
+    // Dispose Three.js resources
+    if (this.renderer) {
+      this.renderer.dispose();
+      this.renderer = null;
+    }
+    if (this.material) {
+      this.material.dispose();
+      this.material = null;
+    }
+    if (this.geometry) {
+      this.geometry.dispose();
+      this.geometry = null;
+    }
+    if (this.textures) {
+      this.textures.forEach(texture => {
+        if (texture && texture.dispose) {
+          texture.dispose();
+        }
+      });
+      this.textures = [];
+    }
+    
+    // Clear scene
+    if (this.scene) {
+      while(this.scene.children.length > 0) {
+        this.scene.remove(this.scene.children[0]);
+      }
+      this.scene = null;
+    }
+  }
 }
 
-// =============================================================================
-// 2. LOGO WALL CYCLE (TUA NUOVA FUNZIONE INTEGRATA)
-// =============================================================================
-function initLogoWallCycle() {
-    // 1. Definizioni base
-    const loopDelay = 1.5;   // Loop Duration
-    const duration  = 0.9;   // Animation Duration
 
-    // 2. Selezione elementi
-    document.querySelectorAll('[data-logo-wall-cycle-init]').forEach(root => {
-        // Evitiamo di re-inizializzare se già attivo (opzionale, ma sicuro per view transitions)
-        // if (root.dataset.initialized === 'true') return;
-        // root.dataset.initialized = 'true';
+function initPixelateImageRenderEffect() {
+  // Clean up existing instances
+  destroyPixelateImageRenderEffect();
+  
+  let renderDuration = 100;  // Velocizzato leggermente per l'hover
+  let renderSteps = 20;      // Più step per fluidità
+  let renderColumns = 10;    // Blocchi iniziali
 
-        const list   = root.querySelector('[data-logo-wall-list]');
-        // Se non c'è la lista, esci
-        if (!list) return;
+  const pixelateElements = document.querySelectorAll('[data-pixelate-render]');
+  pixelateElements.forEach(setupPixelate);
 
-        const items  = Array.from(list.querySelectorAll('[data-logo-wall-item]'));
-        if (!items.length) return;
+  function setupPixelate(root) {
+    const img = root.querySelector('[data-pixelate-render-img]');
+    if (!img) return;
 
-        const shuffleFront = root.getAttribute('data-logo-wall-shuffle') !== 'false';
-        
-        // Mappa dei target originali
-        const originalTargets = items
-            .map(item => item.querySelector('[data-logo-wall-target]'))
-            .filter(Boolean);
+    // Selettore trigger (hover è il focus qui)
+    const trigger = (root.getAttribute('data-pixelate-render-trigger') || 'load').toLowerCase();
 
-        let visibleItems   = [];
-        let visibleCount   = 0;
-        let pool           = [];
-        let pattern        = [];
-        let patternIndex   = 0;
-        let tl;
+    const durAttr = parseInt(root.getAttribute('data-pixelate-render-duration'), 10);
+    const stepsAttr = parseInt(root.getAttribute('data-pixelate-render-steps'), 10);
+    const colsAttr = parseInt(root.getAttribute('data-pixelate-render-columns'), 10);
+    const fitMode = (root.getAttribute('data-pixelate-render-fit') || 'cover').toLowerCase();
 
-        function isVisible(el) {
-            return window.getComputedStyle(el).display !== 'none';
-        }
+    const elRenderDuration = Number.isFinite(durAttr) ? Math.max(16, durAttr) : renderDuration;
+    const elRenderSteps = Number.isFinite(stepsAttr) ? Math.max(1, stepsAttr) : renderSteps;
+    const elRenderColumns = Number.isFinite(colsAttr) ? Math.max(1, colsAttr) : renderColumns;
 
-        function shuffleArray(arr) {
-            const a = arr.slice();
-            for (let i = a.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [a[i], a[j]] = [a[j], a[i]];
-            }
-            return a;
-        }
+    const canvas = document.createElement('canvas');
+    canvas.setAttribute('data-pixelate-canvas', '');
+    canvas.style.position = 'absolute';
+    canvas.style.inset = '0';
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.pointerEvents = 'none'; // Importante: lascia passare il mouse all'img sotto
+    root.style.position ||= 'relative';
+    root.appendChild(canvas);
 
-        function setup() {
-            if (tl) {
-                tl.kill();
-            }
-            visibleItems = items.filter(isVisible);
-            visibleCount = visibleItems.length;
+    const ctx = canvas.getContext('2d', { alpha: true });
+    ctx.imageSmoothingEnabled = false;
 
-            pattern = shuffleArray(
-                Array.from({ length: visibleCount }, (_, i) => i)
-            );
-            patternIndex = 0;
+    const back = document.createElement('canvas');
+    const tiny = document.createElement('canvas');
+    const bctx = back.getContext('2d', { alpha: true });
+    const tctx = tiny.getContext('2d', { alpha: true });
 
-            // Rimuovi tutti i target precedentemente iniettati per pulizia
-            items.forEach(item => {
-                item.querySelectorAll('[data-logo-wall-target]').forEach(old => old.remove());
-            });
+    let naturalW = 0, naturalH = 0;
+    let playing = false;
+    let stageIndex = 0;
+    let targetIndex = 0; // Dove vogliamo arrivare (0 = pixelato, MAX = nitido)
+    let lastTime = 0;
+    let backDirty = true, resizeTimeout = 0;
+    let steps = [elRenderColumns];
 
-            // Ricrea il pool dai nodi originali
-            pool = originalTargets.map(n => n.cloneNode(true));
+    function fitCanvas() {
+      const r = root.getBoundingClientRect();
+      const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+      const w = Math.max(1, Math.round(r.width * dpr));
+      const h = Math.max(1, Math.round(r.height * dpr));
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w; canvas.height = h;
+        back.width = w; back.height = h;
+        backDirty = true;
+      }
+      regenerateSteps();
+    }
 
-            let front, rest;
-            if (shuffleFront) {
-                const shuffledAll = shuffleArray(pool);
-                front = shuffledAll.slice(0, visibleCount);
-                rest  = shuffleArray(shuffledAll.slice(visibleCount));
-            } else {
-                front = pool.slice(0, visibleCount);
-                rest  = shuffleArray(pool.slice(visibleCount));
-            }
-            pool = front.concat(rest);
+    function regenerateSteps() {
+      const cw = Math.max(1, canvas.width);
+      const startCols = Math.min(elRenderColumns, cw);
+      const total = Math.max(1, elRenderSteps);
+      const use = Math.max(1, Math.floor(total * 0.9)); 
+      const a = [];
+      const ratio = Math.pow(cw / startCols, 1 / total);
+      for (let i = 0; i < use; i++) {
+        a.push(Math.max(1, Math.round(startCols * Math.pow(ratio, i))));
+      }
+      for (let i = 1; i < a.length; i++) if (a[i] <= a[i - 1]) a[i] = a[i - 1] + 1;
+      steps = a.length ? a : [startCols];
+    }
 
-            // Popola inizialmente gli slot visibili
-            for (let i = 0; i < visibleCount; i++) {
-                const parent =
-                    visibleItems[i].querySelector('[data-logo-wall-target-parent]') ||
-                    visibleItems[i];
-                // Svuota prima di appendere per sicurezza
-                parent.innerHTML = '';
-                parent.appendChild(pool.shift());
-            }
+    function drawImageToBack() {
+      if (!backDirty || !naturalW || !naturalH) return;
+      const cw = back.width, ch = back.height;
+      let dw = cw, dh = ch, dx = 0, dy = 0;
+      if (fitMode !== 'stretch') {
+        const s = fitMode === 'cover' ? Math.max(cw / naturalW, ch / naturalH) : Math.min(cw / naturalW, ch / naturalH);
+        dw = Math.max(1, Math.round(naturalW * s));
+        dh = Math.max(1, Math.round(naturalH * s));
+        dx = ((cw - dw) >> 1);
+        dy = ((ch - dh) >> 1);
+      }
+      bctx.clearRect(0, 0, cw, ch);
+      bctx.imageSmoothingEnabled = true;
+      bctx.drawImage(img, dx, dy, dw, dh);
+      backDirty = false;
+    }
 
-            tl = gsap.timeline({ repeat: -1, repeatDelay: loopDelay });
-            tl.call(swapNext);
-            tl.play();
-        }
+    function pixelate(columns) {
+      const cw = canvas.width, ch = canvas.height;
+      const cols = Math.max(1, Math.floor(columns));
+      const rows = Math.max(1, Math.round(cols * (ch / cw)));
+      
+      // Se siamo alla massima risoluzione, puliamo il canvas per mostrare l'IMG originale sotto
+      // (Opzionale: rimuovi questo IF se vuoi che il canvas rimanga sempre sopra)
+      if (stageIndex === steps.length - 1 && targetIndex === steps.length - 1) {
+         ctx.clearRect(0, 0, cw, ch);
+         return;
+      }
 
-        function swapNext() {
-            const nowCount = items.filter(isVisible).length;
-            if (nowCount !== visibleCount) {
-                setup();
-                return;
-            }
-            if (!pool.length) return;
+      if (tiny.width !== cols || tiny.height !== rows) { tiny.width = cols; tiny.height = rows; }
+      tctx.imageSmoothingEnabled = false;
+      tctx.clearRect(0, 0, cols, rows);
+      tctx.drawImage(back, 0, 0, cw, ch, 0, 0, cols, rows);
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, cw, ch);
+      ctx.drawImage(tiny, 0, 0, cols, rows, 0, 0, cw, ch);
+    }
 
-            const idx = pattern[patternIndex % visibleCount];
-            patternIndex++;
+    function draw(stepCols) {
+      if (!canvas.width || !canvas.height) return;
+      drawImageToBack();
+      pixelate(stepCols);
+    }
 
-            const container = visibleItems[idx];
-            // Safety check se l'elemento è stato rimosso
-            if (!container) return;
+    // Nuova logica di animazione bidirezionale
+    function animate(t) {
+      if (!playing) return;
 
-            const parent =
-                container.querySelector('[data-logo-wall-target-parent]') ||
-                container.querySelector('*:has(> [data-logo-wall-target])') ||
-                container;
-            
-            const existing = parent.querySelectorAll('[data-logo-wall-target]');
-            if (existing.length > 1) return;
+      // Gestione del timing
+      if (!lastTime) lastTime = t;
+      const delta = t - lastTime;
 
-            const current  = parent.querySelector('[data-logo-wall-target]');
-            const incoming = pool.shift();
+      // Se è passato abbastanza tempo, facciamo un frame
+      if (delta >= elRenderDuration) {
+        if (stageIndex < targetIndex) {
+            stageIndex++; // Andiamo verso il nitido
+        } else if (stageIndex > targetIndex) {
+            stageIndex--; // Torniamo verso il pixelato
+        } else {
+            // Siamo arrivati a destinazione
+            playing = false;
+            // Ultimo disegno per assicurarsi che sia pulito o pixelato
+            draw(steps[stageIndex]);
+            return; 
+        }
+        
+        draw(steps[stageIndex]);
+        lastTime = t;
+      }
+      
+      requestAnimationFrame(animate);
+    }
 
-            gsap.set(incoming, { yPercent: 50, autoAlpha: 0 });
-            parent.appendChild(incoming);
+    function setTarget(isHovering) {
+       // Se hover: target è l'ultimo step (nitido)
+       // Se no hover: target è 0 (pixelato)
+       targetIndex = isHovering ? steps.length - 1 : 0;
+       
+       if (!playing) {
+           playing = true;
+           lastTime = 0; // Reset timer
+           requestAnimationFrame(animate);
+       }
+    }
 
-            if (current) {
-                gsap.to(current, {
-                    yPercent: -50,
-                    autoAlpha: 0,
-                    duration,
-                    ease: "expo.inOut",
-                    onComplete: () => {
-                        current.remove();
-                        pool.push(current);
-                    }
-                });
-            }
+    function init() {
+        naturalW = img.naturalWidth; naturalH = img.naturalHeight;
+        if (!naturalW || !naturalH) return;
+        
+        fitCanvas();
+        
+        // Stato Iniziale: Pixelato (stageIndex 0)
+        stageIndex = 0;
+        targetIndex = 0;
+        backDirty = true;
+        draw(steps[0]);
+    }
 
-            gsap.to(incoming, {
-                yPercent: 0,
-                autoAlpha: 1,
-                duration,
-                delay: 0.1,
-                ease: "expo.inOut"
-            });
-        }
+    function onWindowResize() {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+          fitCanvas();
+          draw(steps[stageIndex]);
+      }, 250);
+    }
 
-        setup();
+    // Gestione Trigger
+    if (img.complete && img.naturalWidth) init(); 
+    else img.addEventListener('load', init, { once: true });
 
-        ScrollTrigger.create({
-            trigger: root,
-            start: 'top bottom',
-            end: 'bottom top',
-            onEnter:      () => tl && tl.play(),
-            onLeave:      () => tl && tl.pause(),
-            onEnterBack:  () => tl && tl.play(),
-            onLeaveBack:  () => tl && tl.pause()
-        });
+    window.addEventListener('resize', onWindowResize);
 
-        // Event listener per tab visibility
-        const visibilityHandler = () => document.hidden ? (tl && tl.pause()) : (tl && tl.play());
-        document.addEventListener('visibilitychange', visibilityHandler);
-        
-        // (Opzionale) Rimuovi listener se l'elemento viene rimosso dal DOM in futuro
-        // per ora lo lasciamo così com'era nel tuo codice originale
-    });
+    if (trigger === 'hover') {
+      root.addEventListener('mouseenter', () => setTarget(true));
+      root.addEventListener('mouseleave', () => setTarget(false));
+    } else {
+       // Se usi altri trigger (load, inview), facciamo solo l'entrata classica
+       // ma manteniamo la struttura compatibile
+       if(trigger === 'load') setTarget(true); // Parte subito
+    }
+
+    // Store instance for cleanup
+    pixelateInstances.push({
+      root,
+      canvas,
+      back,
+      tiny,
+      img,
+      onWindowResize,
+      setTarget,
+      trigger
+    });
+  }
 }
 
-// =============================================================================
-// 3. MWG EFFECT 029 – SCROLL WORDS
-// =============================================================================
-function wrapWordsInSpan(element) {
-    const text = element.textContent;
-    element.innerHTML = text
-        .split(' ')
-        .map(word => `<span>${word}</span>`)
-        .join(' ');
+function destroyPixelateImageRenderEffect() {
+  pixelateInstances.forEach(instance => {
+    window.removeEventListener('resize', instance.onWindowResize);
+    if (instance.canvas && instance.canvas.parentNode) {
+      instance.canvas.parentNode.removeChild(instance.canvas);
+    }
+  });
+  pixelateInstances = [];
 }
 
-function initMwgEffect029() {
-    const paragraph = document.querySelector('.mwg_effect029 .paragraph, .mwg_effect029 .is--title-w');
-    if (!paragraph) return;
+// ================== mwg_effect005 EFFECT (NO ScrollTrigger) ==================
+function initMWGEffect005NoST() {
+  if (typeof gsap === 'undefined') return;
 
-    if (paragraph.dataset.processed === "true") {
-        paragraph.innerHTML = paragraph.textContent;
-    }
-    paragraph.dataset.processed = "true";
+  // Clean previous
+  destroyMWGEffect005NoST();
 
-    gsap.to('.scroll', {
-        autoAlpha: 0,
-        duration: 0.2,
-        scrollTrigger: {
-            trigger: '.mwg_effect029',
-            start: 'top top',
-            end: 'top top-=1',
-            toggleActions: "play none reverse none"
-        }
-    });
+  const scope = document.querySelector('.mwg_effect005');
+  if (!scope) return;
+  const paragraph = scope.querySelector('.paragraph');
+  if (paragraph && !paragraph.querySelector('.word')) {
+    const text = (paragraph.textContent || '').trim();
+    paragraph.innerHTML = text
+      .split(/\s+/)
+      .map((word) => `<span class="word">${word}</span>`)
+      .join(' ');
+  }
 
-    wrapWordsInSpan(paragraph);
+  const pinHeight = scope.querySelector('.pin-height');
+  const container = scope.querySelector('.container');
+  const words = scope.querySelectorAll('.word');
+  if (!(pinHeight && container && words.length)) return;
 
-    const words = paragraph.querySelectorAll('span');
-    words.forEach(word => {
-        word.classList.add('word' + Math.floor(Math.random() * 4));
-    });
+  // Sticky pin
+  container.style.position = 'sticky';
+  container.style.top = '0';
 
-    document.querySelectorAll('.mwg_effect029 .word1').forEach(el => {
-        gsap.to(el, {
-            x: '-0.8em',
-            ease: 'none',
-            scrollTrigger: {
-                trigger: el,
-                start: 'top 80%',
-                end: 'bottom 60%',
-                scrub: 0.2
-            }
-        });
-    });
+  const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+  const easeInOut4 = (p) =>
+    p < 0.5 ? 8 * p * p * p * p : 1 - Math.pow(-2 * p + 2, 4) / 2;
+  const getTranslateX = (el) => {
+    const t = getComputedStyle(el).transform;
+    if (!t || t === 'none') return 0;
+    if (t.startsWith('matrix(')) return parseFloat(t.split(',')[4]) || 0;
+    if (t.startsWith('matrix3d(')) return parseFloat(t.split(',')[12]) || 0;
+    return 0;
+  };
 
-    document.querySelectorAll('.mwg_effect029 .word2').forEach(el => {
-        gsap.to(el, {
-            x: '1.6em',
-            ease: 'none',
-            scrollTrigger: {
-                trigger: el,
-                start: 'top 80%',
-                end: 'bottom 60%',
-                scrub: 0.2
-            }
-        });
-    });
+  const baseX = Array.from(words, (el) => getTranslateX(el));
+  baseX.forEach((x, i) => gsap.set(words[i], { x }));
+  const setX = Array.from(words, (el) => gsap.quickSetter(el, 'x', 'px'));
+  const setO = Array.from(words, (el) => gsap.quickSetter(el, 'opacity'));
 
-    document.querySelectorAll('.mwg_effect029 .word3').forEach(el => {
-        gsap.to(el, {
-            x: '-2.4em',
-            ease: 'none',
-            scrollTrigger: {
-                trigger: el,
-                start: 'top 80%',
-                end: 'bottom 60%',
-                scrub: 0.2
-            }
-        });
-    });
+  let startY = 0;
+  let endY = 0;
+  let range = 1;
+  let ticking = false;
+
+  function measure() {
+    const rect = pinHeight.getBoundingClientRect();
+    const y = window.scrollY;
+    startY = y + rect.top - window.innerHeight * 0.7; // start: top 70%
+    endY = y + rect.bottom - window.innerHeight; // end: bottom bottom
+    range = Math.max(1, endY - startY);
+  }
+
+  function update() {
+    ticking = false;
+    const t = clamp01((window.scrollY - startY) / range);
+    const n = words.length;
+    const stagger = 0.02;
+    const totalStagger = stagger * (n - 1);
+    const animWindow = Math.max(0.0001, 1 - totalStagger);
+
+    for (let i = 0; i < n; i++) {
+      const localStart = i * stagger;
+      const p = clamp01((t - localStart) / animWindow);
+      const eased = easeInOut4(p);
+      setX[i](baseX[i] * (1 - eased));
+      setO[i](eased);
+    }
+  }
+
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(update);
+  }
+
+  function onResize() {
+    measure();
+    for (let i = 0; i < words.length; i++) {
+      baseX[i] = getTranslateX(words[i]);
+      gsap.set(words[i], { x: baseX[i] });
+    }
+    update();
+  }
+
+  measure();
+  update();
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onResize);
+
+  mwgEffect005Cleanup = () => {
+    window.removeEventListener('scroll', onScroll, { passive: true });
+    window.removeEventListener('resize', onResize);
+    gsap.set(words, { clearProps: 'all' });
+  };
 }
 
-// =============================================================================
-// 4. ABOUT GRID FLIP
-// =============================================================================
-function initAboutGridFlip() {
-    const grid = document.querySelector(".about__grid-wrap");
-    const items = grid ? grid.querySelectorAll(".ag__img") : [];
-    const btnBig = document.querySelector(".ag__trigger.is--big");
-    const btnSmall = document.querySelector(".ag__trigger.is--small");
-
-    if (!grid || !items.length || (!btnBig && !btnSmall)) return;
-
-    function updateButtons(isBig) {
-        if (btnBig) gsap.to(btnBig, { opacity: isBig ? 1 : 0.5, duration: 0.3, overwrite: true, pointerEvents: isBig ? "none" : "auto" });
-        if (btnSmall) gsap.to(btnSmall, { opacity: isBig ? 0.5 : 1, duration: 0.3, overwrite: true, pointerEvents: isBig ? "auto" : "none" });
-    }
-
-    grid.classList.add("is--big");
-    grid.classList.remove("is--small");
-    updateButtons(true);
-
-    let isAnimating = false;
-
-    function forceLayoutUpdate() {
-        if (window.ScrollTrigger) ScrollTrigger.refresh();
-        if (window.lenis) window.lenis.resize();
-        window.dispatchEvent(new Event("resize"));
-    }
-
-    function switchLayout(toBig) {
-        if (isAnimating) return;
-        const targetClass = toBig ? "is--big" : "is--small";
-        if (grid.classList.contains(targetClass)) return;
-
-        const state = Flip.getState(items);
-        isAnimating = true;
-        updateButtons(toBig);
-
-        if (toBig) {
-            grid.classList.add("is--big"); grid.classList.remove("is--small");
-        } else {
-            grid.classList.add("is--small"); grid.classList.remove("is--big");
-        }
-
-        forceLayoutUpdate();
-
-        Flip.from(state, {
-            duration: 1.3, ease: "power4.inOut", nested: true, scale: true,
-            onComplete() { isAnimating = false; forceLayoutUpdate(); }
-        });
-    }
-
-    if (btnBig) btnBig.onclick = () => switchLayout(true);
-    if (btnSmall) btnSmall.onclick = () => switchLayout(false);
+function destroyMWGEffect005NoST() {
+  if (mwgEffect005Cleanup) {
+    mwgEffect005Cleanup();
+    mwgEffect005Cleanup = null;
+  }
 }
 
-// =============================================================================
-// 5. ANIMAZIONI INGRESSO (data-transition)
-// =============================================================================
-function initializeAnimations(isTransition = false) {
-    const dynamicDelay = isTransition ? 1.1 : 0.2;
-    const linkDelay = isTransition ? 1.2 : 0.4;
+function initLenisSmoothScroll() {
+  // Destroy existing instance if any
+  destroyLenisSmoothScroll();
 
-    const links = document.querySelectorAll(".link a");
-    if (links.length > 0) {
-        gsap.set(links, { y: "100%", opacity: 1 });
-        gsap.to(links, { y: "0%", duration: 1, stagger: 0.1, ease: "power4.out", delay: linkDelay });
-    }
+  if (typeof Lenis === 'undefined') {
+    return;
+  }
 
-    const elementsToAnimate = document.querySelectorAll('[data-transition]');
-    safeSplitRevert(elementsToAnimate, 'split-done');
+  // Initialize a new Lenis instance for smooth scrolling
+  lenisInstance = new Lenis({
+    lerp: 0.1,
+    smooth: true,
+  });
 
-    elementsToAnimate.forEach(el => {
-        const split = new SplitType(el, { types: 'lines', lineClass: 'line-inner' });
-        el.splitInstance = split; 
-        split.lines.forEach(line => {
-            const wrapper = document.createElement('div');
-            wrapper.classList.add('line-wrapper');
-            line.parentNode.insertBefore(wrapper, line);
-            wrapper.appendChild(line);
-            wrapper.style.overflow = 'hidden';
-            wrapper.style.display = 'block';
-            line.style.display = 'block';
-        });
-        const spans = el.querySelectorAll(".line-inner");
-        gsap.set(spans, { y: "110%" });
-        el.style.opacity = "1";
-        el.classList.add('split-done');
-        gsap.to(spans, { y: "0%", duration: 1.2, stagger: 0.08, ease: "power3.out", delay: dynamicDelay });
-    });
+  // Synchronize Lenis scrolling with GSAP's ScrollTrigger plugin
+  lenisInstance.on('scroll', ScrollTrigger.update);
+
+  // Create animation loop (single runner)
+  const loop = (time) => {
+    if (lenisInstance) {
+      lenisInstance.raf(time);
+    }
+    lenisRafId = requestAnimationFrame(loop);
+  };
+  lenisRafId = requestAnimationFrame(loop);
 }
 
-// =============================================================================
-// 6. ALTRI MODULI E UTILS
-// =============================================================================
-function initCategoryCount() {
-    const categories = document.querySelectorAll('[data-category-id]');
-    const projects = document.querySelectorAll('[data-project-category]');
-    if (!categories.length) return;
-    categories.forEach(category => {
-        const catID = category.getAttribute('data-category-id');
-        const countEl = category.querySelector('[data-category-count]');
-        if (countEl) countEl.textContent = [...projects].filter(p => p.getAttribute('data-project-category') === catID).length;
-    });
-}
-
-function initGridToggle() {
-    const triggers = document.querySelectorAll('.tt__left, .tt__right');
-    const contents = document.querySelectorAll('.ps__list-wrap, .ll__wrap');
-    if (!triggers.length) return;
-    triggers.forEach(trigger => {
-        trigger.onclick = function () {
-            const gridId = this.getAttribute('data-grid');
-            triggers.forEach(t => t.classList.remove('active'));
-            contents.forEach(c => c.classList.remove('active'));
-            this.classList.add('active');
-            contents.forEach(c => { if (c.getAttribute('data-grid') === gridId) c.classList.add('active'); });
-            ScrollTrigger.refresh();
-        };
-    });
-}
-
-let currentFilterResizeHandler = null;
-function initMutliFilterSetupMultiMatch() {
-    const groups = [...document.querySelectorAll('[data-filter-group]')];
-    if (!groups.length) return;
-    if (currentFilterResizeHandler) { window.removeEventListener('resize', currentFilterResizeHandler); currentFilterResizeHandler = null; }
-    currentFilterResizeHandler = () => { groups.forEach(group => { const activeBtn = group.querySelector('[data-filter-target][data-filter-status="active"]'); if (activeBtn) activeBtn.click(); }); };
-    window.addEventListener('resize', currentFilterResizeHandler);
-    groups.forEach(group => {
-        const oldGroup = group; const newGroup = oldGroup.cloneNode(true); oldGroup.parentNode.replaceChild(newGroup, oldGroup);
-        const targetMatch = (newGroup.getAttribute('data-filter-target-match') || 'multi').trim().toLowerCase();
-        const nameMatch = (newGroup.getAttribute('data-filter-name-match') || 'multi').trim().toLowerCase();
-        const buttons = [...newGroup.querySelectorAll('[data-filter-target]')];
-        const items = [...newGroup.querySelectorAll('[data-filter-name]')];
-        const itemTokens = new Map();
-        items.forEach(el => {
-            const collectors = el.querySelectorAll('[data-filter-name-collect]');
-            if (collectors.length) { const tokens = []; collectors.forEach(c => { const v = (c.getAttribute('data-filter-name-collect') || '').trim().toLowerCase(); if (v) tokens.push(v); }); if (tokens.length) el.setAttribute('data-filter-name', tokens.join(' ')); }
-            const raw = (el.getAttribute('data-filter-name') || '').trim().toLowerCase();
-            itemTokens.set(el, new Set(raw ? raw.split(/\s+/).filter(Boolean) : []));
-            el.setAttribute('data-filter-status', 'active'); el.removeAttribute('data-grid-pos');
-        });
-        let activeTags = targetMatch === 'single' ? null : new Set(['all']);
-        const paint = (rawTarget) => {
-            if (rawTarget) {
-                const target = rawTarget.trim().toLowerCase();
-                if (target === 'all' || target === 'reset') { if (targetMatch === 'single') activeTags = null; else { activeTags.clear(); activeTags.add('all'); } }
-                else if (targetMatch === 'single') { activeTags = target; }
-                else { if (activeTags.has('all')) activeTags.delete('all'); if (activeTags.has(target)) activeTags.delete(target); else activeTags.add(target); if (activeTags.size === 0) { activeTags.clear(); activeTags.add('all'); } }
-            }
-            const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
-            let visibleCounter = 0;
-            const isFiltered = activeTags !== null && !(activeTags instanceof Set && activeTags.has('all'));
-            items.forEach(el => {
-                const tokens = itemTokens.get(el);
-                let shouldShow = true;
-                if (isFiltered) { const selected = targetMatch === 'single' ? [activeTags] : [...activeTags]; shouldShow = nameMatch === 'single' ? selected.every(tag => tokens.has(tag)) : selected.some(tag => tokens.has(tag)); }
-                if (shouldShow) { visibleCounter++; if (isDesktop) el.setAttribute('data-grid-pos', visibleCounter <= 5 ? visibleCounter : ((visibleCounter - 6) % 8) + 6); else el.removeAttribute('data-grid-pos'); el.setAttribute('data-filter-status', 'active'); } else { el.removeAttribute('data-grid-pos'); el.setAttribute('data-filter-status', 'not-active'); }
-            });
-            buttons.forEach(btn => {
-                const t = (btn.getAttribute('data-filter-target') || '').trim().toLowerCase();
-                if (t === 'reset') btn.setAttribute('data-filter-status', isFiltered ? 'active' : 'not-active');
-                else { let on = (t === 'all') ? !isFiltered : (targetMatch === 'single' ? activeTags === t : (activeTags instanceof Set && activeTags.has(t))); btn.setAttribute('data-filter-status', on ? 'active' : 'not-active'); }
-            });
-            ScrollTrigger.refresh();
-        };
-        newGroup.onclick = (e) => { const btn = e.target.closest('[data-filter-target]'); if (btn) paint(btn.getAttribute('data-filter-target')); };
-        paint(null, true);
-    });
-}
-
-function initPsItemHover() {
-    const psItems = document.querySelectorAll(".ps__item");
-    if (!psItems.length) return;
-    psItems.forEach((item) => {
-        const imgWrap = item.querySelector(".ps__item-img");
-        const cta = item.querySelector(".projects__cta");
-        const targets = item.querySelectorAll("[data-split-ps]");
-        if (!imgWrap || !targets.length) return;
-        safeSplitRevert(targets, 'split-done-hover');
-        const allLines = [];
-        targets.forEach(el => {
-            const split = new SplitType(el, { types: "lines", lineClass: "split-line" });
-            el.splitInstance = split; el.classList.add('split-done-hover');
-            split.lines.forEach(line => {
-                const wrapper = document.createElement('div'); wrapper.classList.add('line-wrapper'); wrapper.style.overflow = 'hidden'; wrapper.style.display = 'block'; wrapper.style.lineHeight = 'inherit';
-                line.parentNode.insertBefore(wrapper, line); wrapper.appendChild(line);
-            });
-            gsap.set(split.lines, { yPercent: 105 }); allLines.push(...split.lines);
-        });
-        if (cta) gsap.set(cta, { autoAlpha: 0 });
-        const hoverTl = gsap.timeline({ paused: true });
-        hoverTl.to(allLines, { yPercent: 0, duration: 0.8, ease: "expo.out", stagger: 0.05 }, 0);
-        if (cta) hoverTl.to(cta, { autoAlpha: 1, duration: 0.4, ease: "power2.out" }, 0);
-        imgWrap.onmouseenter = () => hoverTl.timeScale(1).play();
-        imgWrap.onmouseleave = () => hoverTl.timeScale(2.2).reverse();
-    });
-}
-
-function initWGTeamModule() {
-    const nameItems = gsap.utils.toArray(".wg__collection-name-item");
-    const imageItems = gsap.utils.toArray(".wg__item");
-    const roleItems = gsap.utils.toArray(".wg__right-role-wrap");
-    const namesWrapper = document.querySelector(".wg__collection-name-list");
-    if (!nameItems.length) return;
-    const isMobile = window.matchMedia("(max-width: 767px)").matches;
-    const show = (order, y) => {
-        gsap.set(nameItems, { opacity: 0.5 });
-        const activeN = nameItems.find(el => el.dataset.order === order);
-        if (activeN) gsap.set(activeN, { opacity: 1 });
-        imageItems.forEach(img => gsap.set(img, { autoAlpha: img.dataset.order === order ? 1 : 0 }));
-        if (!isMobile && namesWrapper) {
-            roleItems.forEach(role => {
-                const isMatch = role.dataset.order === order;
-                gsap.set(role, { autoAlpha: isMatch ? 1 : 0 });
-                if (isMatch) gsap.set(role, { y: y - namesWrapper.getBoundingClientRect().top });
-            });
-        }
-    };
-    nameItems.forEach(el => {
-        el.onmouseenter = (e) => { if (!isMobile) show(el.dataset.order, e.clientY); };
-        el.onclick = () => { if (isMobile) { show(el.dataset.order); const r = el.querySelector(".wg__right-role-wrap-mobile"); if (r) r.style.display = "block"; } };
-    });
+function destroyLenisSmoothScroll() {
+  // Destroy Lenis instance
+  if (lenisRafId) {
+    cancelAnimationFrame(lenisRafId);
+    lenisRafId = null;
+  }
+  if (lenisInstance) {
+    lenisInstance.destroy();
+    lenisInstance = null;
+  }
 }
 
 function initGlobalParallax() {
-    let mm = gsap.matchMedia();
-    mm.add({ isMobile: "(max-width:479px)", isMobileLandscape: "(max-width:767px)", isTablet: "(max-width:991px)", isDesktop: "(min-width:992px)" }, (ctx) => {
-        let { isMobile, isMobileLandscape, isTablet } = ctx.conditions;
-        ScrollTrigger.batch('[data-parallax="trigger"]', {
-            onEnter: batch => {
-                batch.forEach((trigger) => {
-                    let disable = trigger.getAttribute("data-parallax-disable");
-                    if ((disable === "mobile" && isMobile) || (disable === "mobileLandscape" && isMobileLandscape) || (disable === "tablet" && isTablet)) return;
-                    let target = trigger.querySelector('[data-parallax="target"]') || trigger;
-                    let direction = trigger.getAttribute("data-parallax-direction") || "vertical";
-                    let axis = direction === "horizontal" ? "xPercent" : "yPercent";
-                    let scrubVal = trigger.getAttribute("data-parallax-scrub") ? parseFloat(trigger.getAttribute("data-parallax-scrub")) : true;
-                    let startVal = parseFloat(trigger.getAttribute("data-parallax-start") || 20);
-                    let endVal = parseFloat(trigger.getAttribute("data-parallax-end") || -20);
-                    let scrollStart = trigger.getAttribute("data-parallax-scroll-start") || "top bottom";
-                    let scrollEnd = trigger.getAttribute("data-parallax-scroll-end") || "bottom top";
-                    gsap.fromTo(target, { [axis]: startVal }, { [axis]: endVal, ease: "none", scrollTrigger: { trigger: trigger, start: `clamp(${scrollStart})`, end: `clamp(${scrollEnd})`, scrub: scrubVal } });
-                });
-            }
-        });
-    });
+  // Destroy existing parallax context
+  if (parallaxContext) {
+    parallaxContext();
+    parallaxContext = null;
+  }
+
+  if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') {
+    return;
+  }
+
+  // Ensure ScrollTrigger is registered with GSAP (needed on some setups)
+  if (typeof gsap.registerPlugin === 'function') {
+    try {
+      gsap.registerPlugin(ScrollTrigger);
+    } catch (e) {
+      // Ignore if already registered
+    }
+  }
+
+  const triggersCreated = [];
+
+  const setupParallaxCore = (conditions) => {
+    const { isMobile, isMobileLandscape, isTablet } = conditions || {};
+    document.querySelectorAll('[data-parallax="trigger"]').forEach((trigger) => {
+      const disable = trigger.getAttribute("data-parallax-disable");
+      const disableMobile = disable === "mobile" && isMobile;
+      const disableMobileLandscape = disable === "mobileLandscape" && isMobileLandscape;
+      const disableTablet = disable === "tablet" && isTablet;
+      if (disableMobile || disableMobileLandscape || disableTablet) {
+        return;
+      }
+
+      const target = trigger.querySelector('[data-parallax="target"]') || trigger;
+      const direction = trigger.getAttribute("data-parallax-direction") || "vertical";
+      const prop = direction === "horizontal" ? "xPercent" : "yPercent";
+      const scrubAttr = trigger.getAttribute("data-parallax-scrub");
+      const scrub = scrubAttr ? parseFloat(scrubAttr) : true;
+      const startAttr = trigger.getAttribute("data-parallax-start");
+      const startVal = startAttr !== null ? parseFloat(startAttr) : 20;
+      const endAttr = trigger.getAttribute("data-parallax-end");
+      const endVal = endAttr !== null ? parseFloat(endAttr) : -20;
+      const scrollStartRaw = trigger.getAttribute("data-parallax-scroll-start") || "top bottom";
+      const scrollStart = `clamp(${scrollStartRaw})`;
+      const scrollEndRaw = trigger.getAttribute("data-parallax-scroll-end") || "bottom top";
+      const scrollEnd = `clamp(${scrollEndRaw})`;
+
+      const tween = gsap.fromTo(
+        target,
+        { [prop]: startVal },
+        {
+          [prop]: endVal,
+          ease: "none",
+          scrollTrigger: {
+            trigger,
+            start: scrollStart,
+            end: scrollEnd,
+            scrub,
+          },
+        }
+      );
+
+      if (tween && tween.scrollTrigger) {
+        triggersCreated.push(tween.scrollTrigger);
+      }
+    });
+  };
+
+  const cleanup = () => {
+    triggersCreated.forEach(t => t.kill());
+    triggersCreated.length = 0;
+  };
+
+  const hasMatchMedia = typeof gsap.matchMedia === 'function';
+  const hasContext = typeof gsap.context === 'function';
+
+  if (hasMatchMedia && hasContext) {
+    const mm = gsap.matchMedia();
+    mm.add(
+      {
+        isMobile: "(max-width:479px)",
+        isMobileLandscape: "(max-width:767px)",
+        isTablet: "(max-width:991px)",
+        isDesktop: "(min-width:992px)"
+      },
+      (context) => {
+        const destroyLocal = () => cleanup();
+        gsap.context(() => {
+          setupParallaxCore(context.conditions);
+        });
+        return () => {
+          destroyLocal();
+        };
+      }
+    );
+    parallaxContext = () => {
+      cleanup();
+      mm.revert && mm.revert();
+    };
+  } else {
+    // Fallback for older GSAP: single pass without context
+    const simpleConditions = {
+      isMobile: window.matchMedia("(max-width:479px)").matches,
+      isMobileLandscape: window.matchMedia("(max-width:767px)").matches,
+      isTablet: window.matchMedia("(max-width:991px)").matches,
+    };
+    setupParallaxCore(simpleConditions);
+    parallaxContext = cleanup;
+  }
 }
 
-let splitResizeHandler = null; const splitData = new Map();
-function initSplitTextAnimations() {
-    if (typeof SplitText === "undefined") return;
-    function createSplit(el) {
-        const alreadyAnimated = el._hasAnimated === true;
-        const existing = splitData.get(el); if (existing) { existing.split.revert(); existing.st.kill(); }
-        const split = new SplitText(el, { type: "lines", mask: "lines", linesClass: "split-line" });
-        let st;
-        if (alreadyAnimated) { gsap.set(split.lines, { yPercent: 0 }); st = ScrollTrigger.create({ trigger: el, start: "top bottom", onEnter: () => gsap.set(split.lines, { yPercent: 0 }) }); }
-        else {
-            gsap.set(split.lines, { yPercent: 100 }); st = ScrollTrigger.create({
-                trigger: el, start: "top 80%", onEnter: () => { if (el._hasAnimated) return; el._hasAnimated = true; gsap.to(split.lines, { yPercent: 0, duration: 0.8, ease: "expo.out", stagger: 0.08 }); }
-            });
-        }
-        splitData.set(el, { split, st });
-    }
-    const elements = gsap.utils.toArray("[data-split]"); elements.forEach(createSplit);
-    const eyebrowElements = gsap.utils.toArray(".eyebrow");
-    eyebrowElements.forEach((el) => {
-        if (el._splitInstance) el._splitInstance.revert();
-        const split = new SplitText(el, { type: "chars", mask: "chars", charsClass: "eyebrow-char" }); el._splitInstance = split; const chars = split.chars; gsap.set(chars, { opacity: 0 });
-        ScrollTrigger.create({ trigger: el, start: "top 85%", once: true, onEnter: () => { gsap.to(chars, { opacity: 1, duration: 0.05, ease: "power1.out", stagger: { amount: 0.4, from: "random" } }); } });
-    });
-    if (splitResizeHandler) window.removeEventListener("resize", splitResizeHandler); splitResizeHandler = () => { elements.forEach(createSplit); ScrollTrigger.refresh(); }; window.addEventListener("resize", splitResizeHandler);
+function destroyGlobalParallax() {
+  if (parallaxContext) {
+    parallaxContext();
+    parallaxContext = null;
+  }
 }
 
-function initScrambleTextAnimations() {
-    if (typeof gsap === "undefined" || typeof ScrambleTextPlugin === "undefined") return;
-    function highlightRandomChar(el) {
-        const chars = el.querySelectorAll(".char"); if (!chars.length) return;
-        chars.forEach(c => (c.style.color = "")); const rand = chars[Math.floor(Math.random() * chars.length)]; if (rand) rand.style.color = "#C3FF00";
-    }
-    document.querySelectorAll('[data-scramble-hover="link"]').forEach(target => {
-        const textEl = target.querySelector('[data-scramble-hover="target"]'); if (!textEl) return;
-        const originalText = textEl.textContent; const customHoverText = textEl.getAttribute("data-scramble-text");
-        if (typeof SplitText !== "undefined") new SplitText(textEl, { type: "words, chars", wordsClass: "word", charsClass: "char" }); else if (typeof SplitType !== "undefined") new SplitType(textEl, { types: "words, chars", wordClass: "word", charClass: "char" });
-        const newTarget = target.cloneNode(true); target.parentNode.replaceChild(newTarget, target);
-        const newTextEl = newTarget.querySelector('[data-scramble-hover="target"]');
-        newTarget.addEventListener("mouseenter", () => { gsap.to(newTextEl, { duration: 1, scrambleText: { text: customHoverText || originalText, chars: "_X" }, onUpdate: () => highlightRandomChar(newTextEl) }); });
-        newTarget.addEventListener("mouseleave", () => { gsap.to(newTextEl, { duration: 0.6, scrambleText: { text: originalText, speed: 2, chars: "X_" }, onUpdate: () => highlightRandomChar(newTextEl) }); });
-    });
+function initProjectTemplateAnimations() {
+  // Initialize Lenis smooth scroll first
+  initLenisSmoothScroll();
+
+  // Initialize global parallax
+  initGlobalParallax();
+
+  // Initialize mwg_effect005 (no ScrollTrigger)
+  initMWGEffect005NoST();
+
+  // Initialize pixelate effect
+  initPixelateImageRenderEffect();
+
+  // Initialize Three.js Sketch (planetary effect)
+  const sliderContainer = document.getElementById("slider");
+  if (sliderContainer && typeof THREE !== 'undefined') {
+    // Clean up container before creating new instance
+    const existingCanvases = sliderContainer.querySelectorAll('canvas');
+    if (existingCanvases.length > 0) {
+      existingCanvases.forEach(canvas => {
+        try {
+          sliderContainer.removeChild(canvas);
+        } catch (e) {
+          // Ignore errors
+        }
+      });
+    }
+    
+    sketchInstance = new Sketch({
+      debug: false,
+      uniforms: {
+        intensity: { value: 1, type: 'f', min: 0., max: 3 }
+      },
+      fragment: `
+        uniform float time;
+        uniform float progress;
+        uniform float intensity;
+        uniform float width;
+        uniform float scaleX;
+        uniform float scaleY;
+        uniform float transition;
+        uniform float radius;
+        uniform float swipe;
+        uniform sampler2D texture1;
+        uniform sampler2D texture2;
+        uniform sampler2D displacement;
+        uniform vec4 resolution;
+        varying vec2 vUv;
+        mat2 getRotM(float angle) {
+            float s = sin(angle);
+            float c = cos(angle);
+            return mat2(c, -s, s, c);
+        }
+        const float PI = 3.1415;
+        const float angle1 = PI *0.25;
+        const float angle2 = -PI *0.75;
+
+        void main()	{
+          vec2 newUV = (vUv - vec2(0.5))*resolution.zw + vec2(0.5);
+
+          vec4 disp = texture2D(displacement, newUV);
+          vec2 dispVec = vec2(disp.r, disp.g);
+
+          vec2 distortedPosition1 = newUV + getRotM(angle1) * dispVec * intensity * progress;
+          vec4 t1 = texture2D(texture1, distortedPosition1);
+
+          vec2 distortedPosition2 = newUV + getRotM(angle2) * dispVec * intensity * (1.0 - progress);
+          vec4 t2 = texture2D(texture2, distortedPosition2);
+
+          gl_FragColor = mix(t1, t2, progress);
+        }
+      `
+    });
+  }
 }
 
-let footerScrollHandler = null; let footerResizeObserver = null;
-function initFooterCanvasScrubber() {
-    let e = document.getElementById("footercanvas"); if (!e || !e.getContext) return;
-    if (footerScrollHandler) window.removeEventListener("scroll", footerScrollHandler); if (footerResizeObserver) { footerResizeObserver.disconnect(); footerResizeObserver = null; }
-    let t = e.getContext("2d", { alpha: !1, desynchronized: !0 }); t.imageSmoothingEnabled = !0; t.imageSmoothingQuality = "high";
-    let n = e.dataset.base || "", a = (e.dataset.ext || "jpg").toLowerCase(), i = parseInt(e.dataset.frames || "45", 10), r = parseInt(e.dataset.pad || "5", 10), l = parseInt(e.dataset.start || "0", 10); if (!n || !i) return;
-    let o = e.parentElement || e, s = 0, c = 0, f = 1, d = 0, h = 0;
-    function u() { f = Math.min(window.devicePixelRatio || 1, 2); let n = Math.max(1, Math.round(o.clientWidth * f)), a = Math.max(1, Math.round(o.clientHeight * f)); (e.width !== n || e.height !== a) && (e.width = n, e.height = a, t.setTransform(1, 0, 0, 1, 0, 0), t.scale(f, f)), s = Math.max(1, o.clientWidth), c = Math.max(1, o.clientHeight) }
-    let $ = new Map, m = new Map;
-    async function g(e) { if (e < l || e > l + (i - 1)) return null; if ($.has(e)) return $.get(e); if (m.has(e)) return m.get(e); let s = n + String(e).padStart(r, "0") + "." + a; let c = fetch(s, { cache: "force-cache" }).then(e => e.ok ? e.blob() : null).then(createImageBitmap).then(t => { if (t) { if ($.size > 60) { let key = $.keys().next().value; $.get(key)?.close?.(); $.delete(key); } $.set(e, t); m.delete(e); if ((!d || !h)) { d = t.width; h = t.height; } return t; } return null; }).catch(() => { m.delete(e); return null; }); return m.set(e, c), c; }
-    let _ = { start: null, end: null }; function b(e) { let n = Math.max(l, e - 20), a = Math.min(l + (i - 1), e + 20); if (n !== _.start || a !== _.end) { _ = { start: n, end: a }; for (let r = n; r <= a; r += 10) { setTimeout(() => { for (let e = r; e <= Math.min(a, r + 9); e++) $.has(e) || m.has(e) || g(e) }, 0) } } }
-    function v(e) { if (!e || !s || !c) return; let n = (d || e.width) / (h || e.height), a = s / c, i_draw, r_draw; n > a ? i_draw = (r_draw = c) * n : r_draw = (i_draw = s) / n; t.clearRect(0, 0, s, c); t.drawImage(e, (s - i_draw) * .5, (c - r_draw) * .5, i_draw, r_draw); }
-    let x = l, w = null, p = !1; function y() { w && v(w) } let C = (function e(t) { let n = t; for (; n && !n.classList?.contains("footer__video-scrub");) n = n.parentElement; return n || document.body })(e); u(); for (let E = l; E < l + Math.min(20, i); E++) g(E); b(l); g(l).then(e => { e && (w = e, y()) });
-    footerScrollHandler = function () { let rect = C.getBoundingClientRect(); let top = window.scrollY + rect.top; let total = Math.max(1, C.offsetHeight - window.innerHeight); let progress = Math.min(1, Math.max(0, (window.scrollY - top) / total)); let frame = Math.min(l + (i - 1), Math.max(l, Math.round(progress * (i - 1)) + l)); if (frame !== x) { b(x = frame); if (!p) { p = true; requestAnimationFrame(async () => { let img = $.get(x); if (!img) { img = await g(x); } if (img) { w = img; v(img); } p = false; }); } } }; window.addEventListener("scroll", footerScrollHandler, { passive: true }); if (typeof ResizeObserver !== "undefined") { footerResizeObserver = new ResizeObserver(() => { u(); y(); }); footerResizeObserver.observe(o); }
+function destroyProjectTemplateAnimations() {
+  // Destroy Sketch instance
+  if (sketchInstance) {
+    sketchInstance.destroy();
+    sketchInstance = null;
+  }
+
+  // Destroy pixelate effects
+  destroyPixelateImageRenderEffect();
+
+  // Destroy mwg_effect005 (no ScrollTrigger)
+  destroyMWGEffect005NoST();
+
+  // Destroy parallax
+  destroyGlobalParallax();
+
+  // Destroy Lenis
+  destroyLenisSmoothScroll();
 }
 
-function initCircleType() { const circleEl = document.getElementById('circlep'); if (circleEl && typeof CircleType !== 'undefined') new CircleType(circleEl); }
-function initScaleOnScroll() {
-    const elements = gsap.utils.toArray("[data-scale]"); if (!elements.length) return;
-    elements.forEach((el) => { gsap.killTweensOf(el); gsap.set(el, { scale: 1.2 }); gsap.to(el, { scale: 1, ease: "power2.inOut", duration: 1.5, scrollTrigger: { trigger: el, start: "top 90%", toggleActions: "play none none reverse" } }); });
+// ================== HOME PAGE (Canvas + Time) ==================
+function initHomeCanvas() {
+  destroyHomeCanvas();
+
+  if (typeof THREE === 'undefined' || typeof gsap === 'undefined') return;
+
+  const gridEl = document.querySelector('.js-grid');
+  if (!gridEl) return;
+
+  let ww = window.innerWidth;
+  let wh = window.innerHeight;
+
+  const isFirefox = navigator.userAgent.indexOf('Firefox') > -1;
+  const isWindows = navigator.appVersion.indexOf("Win") !== -1;
+
+  const mouseMultiplier = 0.6;
+  const firefoxMultiplier = 20;
+
+  const multipliers = {
+    mouse: isWindows ? mouseMultiplier * 2 : mouseMultiplier,
+    firefox: isWindows ? firefoxMultiplier * 2 : firefoxMultiplier
+  };
+
+  const loader = new THREE.TextureLoader();
+
+  const vertexShader = `
+precision mediump float;
+uniform vec2 u_velo;
+uniform vec2 u_viewSize;
+varying vec2 vUv;
+#define M_PI 3.1415926535897932384626433832795
+void main(){
+  vUv = uv;
+  vec4 worldPos = modelMatrix * vec4(position, 1.0);
+  float normalizedX = worldPos.x / u_viewSize.x;
+  float curvature = cos(normalizedX * M_PI);
+  worldPos.y -= curvature * u_velo.y * 0.6;
+  gl_Position = projectionMatrix * viewMatrix * worldPos;
 }
-let cmsNextScrollHandler = null; function initCmsNextPowerUp() {
-    if (typeof $ === "undefined") return; if (cmsNextScrollHandler) { window.removeEventListener("scroll", cmsNextScrollHandler); cmsNextScrollHandler = null; } const componentsData = []; $("[tr-cmsnext-element='component']").each(function () { let componentEl = $(this), cmsListEl = componentEl.find(".w-dyn-items").first(), cmsItemEl = cmsListEl.children(), currentItemEl, noResultEl = componentEl.find("[tr-cmsnext-element='no-result']"); cmsItemEl.each(function () { if ($(this).find(".w--current").length) currentItemEl = $(this); }); let nextItemEl = currentItemEl ? currentItemEl.next() : $(), prevItemEl = currentItemEl ? currentItemEl.prev() : $(); if (componentEl.attr("tr-cmsnext-loop") === "true") { if (!nextItemEl.length) nextItemEl = cmsItemEl.first(); if (!prevItemEl.length) prevItemEl = cmsItemEl.last(); } let displayEl = nextItemEl; if (componentEl.attr("tr-cmsnext-showprev") === "true") displayEl = prevItemEl; if (componentEl.attr("tr-cmsnext-showall") === "true") { prevItemEl.addClass("is-prev"); currentItemEl && currentItemEl.addClass("is-current"); nextItemEl.addClass("is-next"); } else { cmsItemEl.not(displayEl).remove(); if (!displayEl.length) noResultEl.show(); if (!displayEl.length && componentEl.attr("tr-cmsnext-hideempty") === "true") componentEl.hide(); } const sectionEl = componentEl.closest(".section__next-project"); let targetItemEl = nextItemEl; if (componentEl.attr("tr-cmsnext-showprev") === "true") targetItemEl = prevItemEl; if (sectionEl.length && targetItemEl && targetItemEl.length) { componentsData.push({ sectionEl, componentEl, targetItemEl, triggered: false }); } }); if (componentsData.length) { let isRunning = false; cmsNextScrollHandler = () => { if (isRunning) return; isRunning = true; window.requestAnimationFrame(() => { componentsData.forEach((item) => { if (item.triggered) return; if (!document.contains(item.sectionEl[0])) return; const sectionRect = item.sectionEl[0].getBoundingClientRect(); const componentHeight = item.componentEl.outerHeight() || 0; if (sectionRect.bottom <= componentHeight + 1 && sectionRect.bottom >= 0) { const linkEl = item.targetItemEl.find("a").first(); const href = linkEl.attr("href"); if (href) { item.triggered = true; window.location.href = href; } } }); isRunning = false; }); }; window.addEventListener("scroll", cmsNextScrollHandler, { passive: true }); }
-}
+`;
 
-// =============================================================================
-// NAVIGAZIONE E RESET
-// =============================================================================
-function syncHead(newDoc) {
-    const currentHead = document.head;
-    const newStyles = newDoc.head.querySelectorAll('link[rel="stylesheet"], style');
-    const currentStylesMap = new Set();
-    document.head.querySelectorAll('link[rel="stylesheet"], style').forEach(s => { currentStylesMap.add(s.href || s.innerText); });
-    newStyles.forEach(style => { if (!currentStylesMap.has(style.href || style.innerText)) { currentHead.appendChild(style.cloneNode(true)); } });
-}
+  const fragmentShader = `
+precision mediump float;
+uniform vec2 u_res;
+uniform vec2 u_size;
+uniform vec2 u_velo; 
+uniform sampler2D u_texture;
+varying vec2 vUv;
 
-if (window.navigation) {
-    navigation.addEventListener("navigate", (event) => {
-        if (!event.destination.url.includes(window.location.origin)) return;
-        event.intercept({
-            handler: async () => {
-                try {
-                    const response = await fetch(event.destination.url);
-                    const text = await response.text();
-                    const doc = new DOMParser().parseFromString(text, "text/html");
-                    syncHead(doc);
-                    if (document.startViewTransition) {
-                        const transition = document.startViewTransition(() => {
-                            document.body.innerHTML = doc.body.innerHTML;
-                            document.title = doc.title;
-                        });
-                        transition.ready.then(() => finalizePage(true));
-                    } else {
-                        document.body.innerHTML = doc.body.innerHTML;
-                        finalizePage(true);
-                    }
-                } catch (err) { window.location.href = event.destination.url; }
-            },
-            scroll: "manual"
-        });
-    });
-}
-
-function finalizePage(isTransition = false) {
-    window.scrollTo(0, 0);
-    ScrollTrigger.getAll().forEach(t => t.kill());
-    gsap.killTweensOf("*");
-
-    if (window.Webflow) { window.Webflow.destroy(); window.Webflow.ready(); window.Webflow.require('ix2').init(); }
-    if (window.lenis) { window.lenis.scrollTo(0, { immediate: true }); window.lenis.resize(); }
-
-    document.fonts.ready.then(() => {
-        initCategoryCount();
-        initGridToggle();
-        initMutliFilterSetupMultiMatch();
-        initPsItemHover();
-        
-        // Modules
-        initMwgEffect029();
-        initLogoWallCycle(); // Questa ora chiama la funzione che hai inserito tu
-        initAboutGridFlip();
-        initGlobalParallax();
-        initSplitTextAnimations();
-        initScrambleTextAnimations();
-        initFooterCanvasScrubber();
-        initCircleType();
-        initScaleOnScroll();
-        initCmsNextPowerUp();
-
-        if (typeof initWGTeamModule === "function") initWGTeamModule();
-
-        initializeAnimations(isTransition);
-        setTimeout(() => { ScrollTrigger.refresh(); }, 400);
-    });
+float random(vec2 p) {
+  return fract(sin(dot(p.xy, vec2(12.9898, 78.233))) * 43758.5453);
 }
 
-window.addEventListener("DOMContentLoaded", () => finalizePage(false));
+vec2 cover(vec2 screenSize, vec2 imageSize, vec2 uv) {
+  float screenRatio = screenSize.x / screenSize.y;
+  float imageRatio = imageSize.x / imageSize.y;
+  vec2 newSize = screenRatio < imageRatio 
+    ? vec2(imageSize.x * (screenSize.y / imageSize.y), screenSize.y)
+    : vec2(screenSize.x, imageSize.y * (screenSize.x / imageSize.x));
+  vec2 newOffset = (screenRatio < imageRatio 
+    ? vec2((newSize.x - screenSize.x) / 2.0, 0.0) 
+    : vec2(0.0, (newSize.y - screenSize.y) / 2.0)) / newSize;
+  return uv * screenSize / newSize + newOffset;
+}
+
+void main() {
+  vec2 uv = vUv;
+  vec2 uvCover = cover(u_res, u_size, uv);
+  vec2 rgbOffset = u_velo * 0.0002;
+  float r = texture2D(u_texture, uvCover + rgbOffset).r;
+  float g = texture2D(u_texture, uvCover).g;
+  float b = texture2D(u_texture, uvCover - rgbOffset).b;
+  vec4 color = vec4(r, g, b, 1.0);
+  float noise = random(uvCover * 550.0); 
+  color.rgb += (noise - 0.5) * 0.08;
+  float dist = distance(vUv, vec2(0.5, 0.5));
+  float vignette = smoothstep(0.8, 0.2, dist * 0.9);
+  color.rgb *= vignette;
+  gl_FragColor = color;
+}
+`;
+
+  const geometry = new THREE.PlaneBufferGeometry(1, 1, 32, 32);
+  const material = new THREE.ShaderMaterial({ fragmentShader, vertexShader });
+
+  class Plane extends THREE.Object3D {
+    init(el, i) {
+      this.el = el;
+      this.x = 0;
+      this.y = 0;
+      this.my = 1 - ((i % 5) * 0.1);
+      this.geometry = geometry;
+      this.material = material.clone();
+      this.material.uniforms = {
+        u_texture: { value: 0 },
+        u_res: { value: new THREE.Vector2(1, 1) },
+        u_size: { value: new THREE.Vector2(1, 1) }, 
+        u_velo: { value: new THREE.Vector2(0, 0) },
+        u_viewSize: { value: new THREE.Vector2(ww, wh) } 
+      };
+      this.texture = loader.load(this.el.dataset.src, (texture) => {
+        texture.minFilter = THREE.LinearFilter;
+        texture.generateMipmaps = false;
+        const { naturalWidth, naturalHeight } = texture.image;
+        const { u_size, u_texture } = this.material.uniforms;
+        u_texture.value = texture;
+        u_size.value.x = naturalWidth;
+        u_size.value.y = naturalHeight;
+      });
+      this.mesh = new THREE.Mesh(this.geometry, this.material);
+      this.add(this.mesh);
+      this.resize();
+    }
+    update = (x, y, max, velo) => {
+      const { right, bottom } = this.rect;
+      const { u_velo } = this.material.uniforms;
+      this.y = gsap.utils.wrap(-(max.y - bottom), bottom, y * this.my) - this.yOffset;
+      this.x = gsap.utils.wrap(-(max.x - right), right, x) - this.xOffset;
+      u_velo.value.x = velo.x;
+      u_velo.value.y = velo.y;
+      this.position.x = this.x;
+      this.position.y = this.y;
+    }
+    resize() {
+      this.rect = this.el.getBoundingClientRect();
+      const { left, top, width, height } = this.rect;
+      const { u_res, u_viewSize } = this.material.uniforms;
+      this.xOffset = (left + (width / 2)) - (ww / 2);
+      this.yOffset = (top + (height / 2)) - (wh / 2);
+      this.position.x = this.xOffset;
+      this.position.y = this.yOffset;
+      u_res.value.x = width;
+      u_res.value.y = height;
+      u_viewSize.value.x = ww;
+      u_viewSize.value.y = wh;
+      this.mesh.scale.set(width, height, 1);
+    }
+  }
+
+  class Core {
+    constructor() {
+      this.tx = 0;
+      this.ty = 0;
+      this.cx = 0;
+      this.cy = 0;
+      this.velo = { x: 0, y: 0 };
+      this.diff = 0;
+      this.wheel = { x: 0, y: 0 };
+      this.on = { x: 0, y: 0 };
+      this.max = { x: 0, y: 0 };
+      this.isDragging = false;
+
+      this.tl = gsap.timeline({ paused: true });
+
+      this.el = gridEl;
+      this.el.style.touchAction = 'none';
+
+      this.scene = new THREE.Scene();
+      this.camera = new THREE.OrthographicCamera(
+        ww / -2, ww / 2, wh / 2, wh / -2, 1, 1000
+      );
+      this.camera.lookAt(this.scene.position);
+      this.camera.position.z = 1;
+
+      this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      this.renderer.setSize(ww, wh);
+      this.renderer.setPixelRatio(gsap.utils.clamp(1, 1.5, window.devicePixelRatio));
+      this.renderer.setClearColor(0xE7E7E7, 1);
+      const canvasEl = this.renderer.domElement;
+      // Keep canvas full-viewport, behind UI, and non-blocking
+      canvasEl.style.position = 'fixed';
+      canvasEl.style.top = '0';
+      canvasEl.style.left = '0';
+      canvasEl.style.width = '100%';
+      canvasEl.style.height = '100%';
+      canvasEl.style.pointerEvents = 'none';
+      canvasEl.style.zIndex = '-1';
+      if (canvasEl.parentNode) {
+        canvasEl.parentNode.removeChild(canvasEl);
+      }
+      document.body.appendChild(canvasEl);
+
+      this.addPlanes();
+      this.addEvents();
+      this.resize();
+    }
+
+    addEvents() {
+      gsap.ticker.add(this.tick);
+      window.addEventListener('mousemove', this.onMouseMove);
+      window.addEventListener('mousedown', this.onMouseDown);
+      window.addEventListener('mouseup', this.onMouseUp);
+      window.addEventListener('wheel', this.onWheel, { passive: true });
+      window.addEventListener('touchstart', this.onTouchStart, { passive: false });
+      window.addEventListener('touchmove', this.onTouchMove, { passive: false });
+      window.addEventListener('touchend', this.onTouchEnd);
+      window.addEventListener('resize', this.resize);
+    }
+
+    addPlanes() {
+      const planes = [...document.querySelectorAll('.js-plane')];
+      this.planes = planes.map((el, i) => {
+        const plane = new Plane();
+        plane.init(el, i);
+        this.scene.add(plane);
+        return plane;
+      });
+    }
+
+    tick = () => {
+      const xDiff = this.tx - this.cx;
+      const yDiff = this.ty - this.cy;
+
+      this.cx += xDiff * 0.085;
+      this.cx = Math.round(this.cx * 100) / 100;
+
+      this.cy += yDiff * 0.085;
+      this.cy = Math.round(this.cy * 100) / 100;
+
+      this.diff = Math.max(
+        Math.abs(yDiff * 0.0001), 
+        Math.abs(xDiff * 0.0001)
+      );
+
+      const intensity = 0.025;
+      this.velo.x = xDiff * intensity;
+      this.velo.y = yDiff * intensity;
+
+      this.planes && this.planes.forEach(plane => 
+        plane.update(this.cx, this.cy, this.max, this.velo)
+      );
+
+      this.renderer.render(this.scene, this.camera);
+    }
+
+    onMouseMove = ({ clientX, clientY }) => {
+      if (!this.isDragging) return;
+      this.tx = this.on.x + clientX * 2.5;
+      this.ty = this.on.y - clientY * 2.5;
+    }
+
+    onMouseDown = ({ clientX, clientY }) => {
+      if (this.isDragging) return;
+      this.isDragging = true;
+      this.on.x = this.tx - clientX * 2.5;
+      this.on.y = this.ty + clientY * 2.5;
+    }
+
+    onMouseUp = () => {
+      if (!this.isDragging) return;
+      this.isDragging = false;
+    }
+
+    onTouchStart = (e) => {
+      if (this.isDragging) return;
+      this.isDragging = true;
+      this.on.x = this.tx - e.touches[0].clientX * 2.5;
+      this.on.y = this.ty + e.touches[0].clientY * 2.5;
+    }
+
+    onTouchMove = (e) => {
+      if (!this.isDragging) return;
+      e.preventDefault();
+      this.tx = this.on.x + e.touches[0].clientX * 2.5;
+      this.ty = this.on.y - e.touches[0].clientY * 2.5;
+    }
+
+    onTouchEnd = () => {
+      if (!this.isDragging) return;
+      this.isDragging = false;
+    }
+
+    onWheel = (e) => {
+      const { mouse, firefox } = multipliers;
+      this.wheel.x = e.wheelDeltaX || e.deltaX * -1;
+      this.wheel.y = e.wheelDeltaY || e.deltaY * -1;
+      if (isFirefox && e.deltaMode === 1) {
+        this.wheel.x *= firefox;
+        this.wheel.y *= firefox;
+      }
+      this.wheel.y *= mouse;
+      this.wheel.x *= mouse;
+      this.tx += this.wheel.x;
+      this.ty -= this.wheel.y;
+    }
+
+    resize = () => {
+      ww = window.innerWidth;
+      wh = window.innerHeight;
+      const { bottom, right } = this.el.getBoundingClientRect();
+      this.max.x = right;
+      this.max.y = bottom;
+      if (this.planes) {
+        this.planes.forEach(plane => plane.resize());
+      }
+      this.renderer.setSize(ww, wh);
+    }
+  }
+
+  const core = new Core();
+
+  homeCanvasCleanup = () => {
+    if (core) {
+      gsap.ticker.remove(core.tick);
+      window.removeEventListener('mousemove', core.onMouseMove);
+      window.removeEventListener('mousedown', core.onMouseDown);
+      window.removeEventListener('mouseup', core.onMouseUp);
+      window.removeEventListener('wheel', core.onWheel, { passive: true });
+      window.removeEventListener('touchstart', core.onTouchStart);
+      window.removeEventListener('touchmove', core.onTouchMove);
+      window.removeEventListener('touchend', core.onTouchEnd);
+      window.removeEventListener('resize', core.resize);
+      if (core.renderer && core.renderer.domElement && core.renderer.domElement.parentNode) {
+        core.renderer.domElement.parentNode.removeChild(core.renderer.domElement);
+      }
+      if (core.el) {
+        core.el.style.touchAction = '';
+      }
+    }
+  };
+}
+
+function destroyHomeCanvas() {
+  if (homeCanvasCleanup) {
+    homeCanvasCleanup();
+    homeCanvasCleanup = null;
+  }
+}
+
+function initHomeTime() {
+  destroyHomeTime();
+
+  const defaultTimezone = "Europe/Amsterdam";
+  const createFormatter = (timezone) => new Intl.DateTimeFormat([], {
+    timeZone: timezone,
+    timeZoneName: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+
+  const parseFormattedTime = (formattedDateTime) => {
+    const match = formattedDateTime.match(/(\d+):(\d+):(\d+)\s*([\w+]+)/);
+    if (match) {
+      return { hours: match[1], minutes: match[2], seconds: match[3], timezone: match[4] };
+    }
+    return null;
+  };
+
+  const updateTime = () => {
+    document.querySelectorAll('[data-current-time]').forEach((element) => {
+      const timezone = element.getAttribute('data-current-time') || defaultTimezone;
+      const formatter = createFormatter(timezone);
+      const now = new Date();
+      const formattedDateTime = formatter.format(now);
+      const timeParts = parseFormattedTime(formattedDateTime);
+      if (timeParts) {
+        const { hours, minutes, seconds, timezone } = timeParts;
+        const hoursElem = element.querySelector('[data-current-time-hours]');
+        const minutesElem = element.querySelector('[data-current-time-minutes]');
+        const secondsElem = element.querySelector('[data-current-time-seconds]');
+        const timezoneElem = element.querySelector('[data-current-time-timezone]');
+        if (hoursElem) hoursElem.textContent = hours;
+        if (minutesElem) minutesElem.textContent = minutes;
+        if (secondsElem) secondsElem.textContent = seconds;
+        if (timezoneElem) timezoneElem.textContent = timezone;
+      }
+    });
+  };
+
+  updateTime();
+  const intervalId = setInterval(updateTime, 1000);
+  homeTimeCleanup = () => clearInterval(intervalId);
+}
+
+function destroyHomeTime() {
+  if (homeTimeCleanup) {
+    homeTimeCleanup();
+    homeTimeCleanup = null;
+  }
+}
+
+function initHomeAnimations() {
+  destroyHomeAnimations();
+  initHomeCanvas();
+  initHomeTime();
+}
+
+function destroyHomeAnimations() {
+  destroyHomeCanvas();
+  destroyHomeTime();
+}
+
+// ================== ABOUT PAGE (Draggable Loop) ==================
+function initDraggableInfiniteGSAPSlider() {
+  if (typeof gsap === 'undefined' || typeof Draggable === 'undefined' || typeof InertiaPlugin === 'undefined') {
+    return;
+  }
+
+  const wrapper = document.querySelector('[data-slider="list"]');
+  if (!wrapper) return;
+
+  const slides = gsap.utils.toArray('[data-slider="slide"]');
+  if (!slides.length) return;
+
+  // Cleanup existing
+  destroyDraggableInfiniteGSAPSlider();
+
+  let activeElement = null;
+  let currentEl = null;
+  let currentIndex = 0;
+
+  // Responsive: decide which element is active
+  const mq = window.matchMedia('(min-width: 992px)');
+  let useNextForActive = mq.matches;
+
+  const onMQChange = (e) => {
+    useNextForActive = e.matches;
+    if (currentEl) {
+      applyActive(currentEl);
+    }
+  };
+  mq.addEventListener('change', onMQChange);
+
+  function resolveActive(el) {
+    return useNextForActive ? (el.nextElementSibling || slides[0]) : el;
+  }
+
+  function applyActive(el) {
+    if (activeElement) activeElement.classList.remove('active');
+    const target = resolveActive(el);
+    target.classList.add('active');
+    activeElement = target;
+  }
+
+  // Helper: horizontal loop (simplified from provided code)
+  function horizontalLoop(items, config) {
+    items = gsap.utils.toArray(items);
+    config = config || {};
+    let tl = gsap.timeline({
+      repeat: config.repeat,
+      paused: config.paused,
+      defaults: { ease: "none" },
+      onUpdate: config.onChange && function () {
+        const i = tl.closestIndex();
+        if (tl._lastIndex !== i) {
+          tl._lastIndex = i;
+          config.onChange(items[i], i);
+        }
+      }
+    });
+
+    const snap = config.snap === false ? (v) => v : gsap.utils.snap(config.snap || 1);
+    const center = config.center === true ? items[0].parentNode : gsap.utils.toArray(config.center)[0] || items[0].parentNode;
+    const widths = [];
+    const xPercents = [];
+    let totalWidth;
+    const pixelsPerSecond = (config.speed || 1) * 100;
+    const times = [];
+    let timeWrap;
+    let curIndex = 0;
+    let proxy;
+
+    const populate = () => {
+      const startX = items[0].offsetLeft;
+      const spaceBefore = [];
+      let b1 = center.getBoundingClientRect(), b2;
+      items.forEach((el, i) => {
+        widths[i] = parseFloat(gsap.getProperty(el, "width", "px"));
+        xPercents[i] = snap(parseFloat(gsap.getProperty(el, "x", "px")) / widths[i] * 100 + gsap.getProperty(el, "xPercent"));
+        b2 = el.getBoundingClientRect();
+        spaceBefore[i] = b2.left - (i ? b1.right : b1.left);
+        b1 = b2;
+      });
+      gsap.set(items, { xPercent: i => xPercents[i] });
+      totalWidth = items[items.length - 1].offsetLeft + xPercents[items.length - 1] / 100 * widths[items.length - 1] - startX + spaceBefore[0] + items[items.length - 1].offsetWidth * gsap.getProperty(items[items.length - 1], "scaleX") + (parseFloat(config.paddingRight) || 0);
+    };
+
+    const populateTimeline = () => {
+      tl.clear();
+      times.length = 0;
+      const startX = items[0].offsetLeft;
+      items.forEach((item, i) => {
+        const curX = xPercents[i] / 100 * widths[i];
+        const distanceToStart = item.offsetLeft + curX - startX;
+        const distanceToLoop = distanceToStart + widths[i] * gsap.getProperty(item, "scaleX");
+        tl.to(item, { xPercent: snap((curX - distanceToLoop) / widths[i] * 100), duration: distanceToLoop / pixelsPerSecond }, 0)
+          .fromTo(item, { xPercent: snap((curX - distanceToLoop + totalWidth) / widths[i] * 100) }, {
+            xPercent: xPercents[i],
+            duration: (curX - distanceToLoop + totalWidth - curX) / pixelsPerSecond,
+            immediateRender: false
+          }, distanceToLoop / pixelsPerSecond)
+          .add("label" + i, distanceToStart / pixelsPerSecond);
+        times[i] = distanceToStart / pixelsPerSecond;
+      });
+      timeWrap = gsap.utils.wrap(0, tl.duration());
+    };
+
+    populate();
+    populateTimeline();
+
+    const refresh = () => {
+      const progress = tl.progress();
+      tl.progress(0, true);
+      populate();
+      populateTimeline();
+      tl.progress(progress, true);
+    };
+
+    const onResize = () => refresh(true);
+    window.addEventListener("resize", onResize);
+
+    function toIndex(index, vars) {
+      vars = vars || {};
+      if (Math.abs(index - curIndex) > items.length / 2) {
+        index += index > curIndex ? -items.length : items.length;
+      }
+      let newIndex = gsap.utils.wrap(0, items.length, index);
+      let time = times[newIndex];
+      if ((time > tl.time()) !== (index > curIndex) && index !== curIndex) {
+        time += tl.duration() * (index > curIndex ? 1 : -1);
+      }
+      if (time < 0 || time > tl.duration()) {
+        vars.modifiers = { time: timeWrap };
+      }
+      curIndex = newIndex;
+      vars.overwrite = true;
+      gsap.killTweensOf(proxy);
+      return vars.duration === 0 ? tl.time(timeWrap(time)) : tl.tweenTo(time, vars);
+    }
+
+    tl.toIndex = (index, vars) => toIndex(index, vars);
+    tl.closestIndex = (setCurrent) => {
+      let index = getClosest(times, tl.time(), tl.duration());
+      if (setCurrent) {
+        curIndex = index;
+        tl._lastIndex = index;
+      }
+      return index;
+    };
+    tl.current = () => curIndex;
+
+    function getClosest(values, value, wrap) {
+      let i = values.length, closest = 1e10, index = 0, d;
+      while (i--) {
+        d = Math.abs(values[i] - value);
+        if (d > wrap / 2) d = wrap - d;
+        if (d < closest) {
+          closest = d;
+          index = i;
+        }
+      }
+      return index;
+    }
+
+    // Draggable
+    let draggable;
+    let wasPlaying = false;
+    let startProgress = 0;
+    let ratio = 0;
+    let initChangeX = 0;
+    let lastSnap = 0;
+    const wrap = gsap.utils.wrap(0, 1);
+
+    proxy = document.createElement("div");
+
+    draggable = Draggable.create(proxy, {
+      trigger: items[0].parentNode,
+      type: "x",
+      onPressInit() {
+        gsap.killTweensOf(tl);
+        wasPlaying = !tl.paused();
+        tl.pause();
+        startProgress = tl.progress();
+        refresh();
+        ratio = 1 / totalWidth;
+        initChangeX = (startProgress / -ratio) - this.x;
+        gsap.set(proxy, { x: startProgress / -ratio });
+      },
+      onDrag() {
+        align();
+      },
+      onThrowUpdate() {
+        align();
+      },
+      overshootTolerance: 0,
+      inertia: true,
+      snap(value) {
+        if (Math.abs(startProgress / -ratio - this.x) < 10) {
+          return lastSnap + initChangeX;
+        }
+        let time = -(value * ratio) * tl.duration();
+        let wrappedTime = timeWrap(time);
+        let snapTime = times[getClosest(times, wrappedTime, tl.duration())];
+        let dif = snapTime - wrappedTime;
+        if (Math.abs(dif) > tl.duration() / 2) dif += dif < 0 ? tl.duration() : -tl.duration();
+        lastSnap = (time + dif) / tl.duration() / -ratio;
+        return lastSnap;
+      },
+      onRelease() {
+        syncIndex();
+        this.isThrowing && (tl._indexIsDirty = true);
+      },
+      onThrowComplete() {
+        syncIndex();
+        wasPlaying && tl.play();
+      }
+    })[0];
+
+    function align() {
+      tl.progress(wrap(startProgress + (draggable.startX - draggable.x) * ratio));
+    }
+
+    function syncIndex() {
+      tl.closestIndex(true);
+    }
+
+    tl.draggable = draggable;
+    tl.closestIndex(true);
+    tl._lastIndex = curIndex;
+    config.onChange && config.onChange(items[curIndex], curIndex);
+
+    return () => {
+      window.removeEventListener("resize", onResize);
+      draggable && draggable.kill();
+      tl && tl.kill();
+    };
+  }
+
+  const loopCleanup = horizontalLoop(slides, {
+    paused: true,
+    draggable: true,
+    center: false,
+    onChange: (element, index) => {
+      currentEl = element;
+      currentIndex = index;
+      applyActive(element);
+    }
+  });
+
+  if (!currentEl && slides[0]) {
+    currentEl = slides[0];
+    currentIndex = 0;
+    applyActive(currentEl);
+  }
+
+  aboutSliderCleanup = () => {
+    if (loopCleanup) loopCleanup();
+    mq.removeEventListener('change', onMQChange);
+    if (activeElement) activeElement.classList.remove('active');
+    activeElement = null;
+    currentEl = null;
+  };
+}
+
+function destroyDraggableInfiniteGSAPSlider() {
+  if (aboutSliderCleanup) {
+    aboutSliderCleanup();
+    aboutSliderCleanup = null;
+  }
+}
+
+function initAboutAnimations() {
+  destroyAboutAnimations();
+  initLenisSmoothScroll();
+  initGlobalParallax();
+  initDraggableInfiniteGSAPSlider();
+}
+
+function destroyAboutAnimations() {
+  destroyDraggableInfiniteGSAPSlider();
+  destroyGlobalParallax();
+  destroyLenisSmoothScroll();
+}
+
+ // REMOVED: initPageAnimations() - Not used, conflicts with destroyProjectTemplateAnimations()
+ 
+ // Initialize on DOM ready without Barba
+ document.addEventListener("DOMContentLoaded", () => {
+   const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
+   if (namespace === 'project-template') {
+     initProjectTemplateAnimations();
+   } else if (namespace === 'about') {
+     initAboutAnimations();
+   } else if (namespace === 'home') {
+     initHomeAnimations();
+   }
+   ensureLenisRunning();
+   if (typeof ScrollTrigger !== 'undefined') {
+     ScrollTrigger.refresh();
+   }
+ });
+
+
+
+})();
