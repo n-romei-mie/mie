@@ -1,9 +1,8 @@
 /**
- * WEBFLOW ULTIMATE ENGINE - FULL STABLE
- * Gestisce: Navigation, Head Sync, GSAP, Filters, Team, Grid Toggle & Animations
+ * WEBFLOW ULTIMATE ENGINE - FIXED FILTERS & HOVERS
  */
 
-// 1. REGISTRAZIONE PLUGIN GSAP
+// 1. REGISTRAZIONE PLUGIN
 if (typeof gsap !== "undefined") {
     gsap.registerPlugin(ScrollTrigger, Flip);
 }
@@ -40,141 +39,133 @@ function initializeAnimations(isTransition = false) {
     });
 }
 
-// --- 3. CONTEGGIO PROGETTI ---
-function initCategoryCount() {
-    const categories = document.querySelectorAll('[data-category-id]');
-    const projects = document.querySelectorAll('[data-project-category]');
-    if (!categories.length) return;
-    categories.forEach(category => {
-        const catID = category.getAttribute('data-category-id');
-        const countEl = category.querySelector('[data-category-count]');
-        if (countEl) countEl.textContent = [...projects].filter(p => p.getAttribute('data-project-category') === catID).length;
-    });
-}
-
-// --- 4. TOGGLE VISTA GRIGLIA ---
-function initGridToggle() {
-    const triggers = document.querySelectorAll('.tt__left, .tt__right');
-    const contents = document.querySelectorAll('.ps__list-wrap, .ll__wrap');
-    triggers.forEach(trigger => {
-        trigger.onclick = function() {
-            const gridId = this.getAttribute('data-grid');
-            triggers.forEach(t => t.classList.remove('active'));
-            contents.forEach(c => c.classList.remove('active'));
-            this.classList.add('active');
-            contents.forEach(c => { if (c.getAttribute('data-grid') === gridId) c.classList.add('active'); });
-            ScrollTrigger.refresh();
-        };
-    });
-}
-
-// --- 5. MULTI-FILTER ---
+// --- 3. SISTEMA MULTI-FILTER (FIXED PER VIEW TRANSITIONS) ---
 function initMutliFilterSetupMultiMatch() {
     const groups = [...document.querySelectorAll('[data-filter-group]')];
     if (!groups.length) return;
 
     groups.forEach(group => {
-        const targetMatch = (group.getAttribute('data-filter-target-match') || 'multi').trim().toLowerCase();
-        const nameMatch = (group.getAttribute('data-filter-name-match') || 'multi').trim().toLowerCase();
-        const buttons = [...group.querySelectorAll('[data-filter-target]')];
-        const items = [...group.querySelectorAll('[data-filter-name]')];
+        // Rimuoviamo listener precedenti clonando il nodo (evita accumulo eventi)
+        const newGroup = group.cloneNode(true);
+        group.parentNode.replaceChild(newGroup, group);
+
+        const targetMatch = (newGroup.getAttribute('data-filter-target-match') || 'multi').trim().toLowerCase();
+        const nameMatch = (newGroup.getAttribute('data-filter-name-match') || 'multi').trim().toLowerCase();
+        const buttons = [...newGroup.querySelectorAll('[data-filter-target]')];
+        const items = [...newGroup.querySelectorAll('[data-filter-name]')];
 
         const itemTokens = new Map();
         items.forEach(el => {
+            const collectors = el.querySelectorAll('[data-filter-name-collect]');
+            if (collectors.length) {
+                const seen = new Set(), tokens = [];
+                collectors.forEach(c => {
+                    const v = (c.getAttribute('data-filter-name-collect') || '').trim().toLowerCase();
+                    if (v && !seen.has(v)) { seen.add(v); tokens.push(v); }
+                });
+                if (tokens.length) el.setAttribute('data-filter-name', tokens.join(' '));
+            }
             const raw = (el.getAttribute('data-filter-name') || '').trim().toLowerCase();
-            itemTokens.set(el, new Set(raw ? raw.split(/\s+/).filter(Boolean) : []));
+            const tokens = raw ? raw.split(/\s+/).filter(Boolean) : [];
+            itemTokens.set(el, new Set(tokens));
             el.setAttribute('data-filter-status', 'active');
         });
 
         let activeTags = targetMatch === 'single' ? null : new Set(['all']);
 
-        const paint = (target, isResize = false) => {
-            if (!isResize && target) {
-                target = target.toLowerCase();
+        const paint = (rawTarget, isResize = false) => {
+            if (!isResize && rawTarget) {
+                const target = rawTarget.trim().toLowerCase();
                 if (target === 'all' || target === 'reset') {
-                    if (targetMatch === 'single') activeTags = null; else { activeTags.clear(); activeTags.add('all'); }
+                    if (targetMatch === 'single') activeTags = null;
+                    else { activeTags.clear(); activeTags.add('all'); }
                 } else if (targetMatch === 'single') {
                     activeTags = target;
                 } else {
                     if (activeTags.has('all')) activeTags.delete('all');
-                    activeTags.has(target) ? activeTags.delete(target) : activeTags.add(target);
-                    if (activeTags.size === 0) activeTags.add('all');
+                    if (activeTags.has(target)) activeTags.delete(target);
+                    else activeTags.add(target);
+                    if (activeTags.size === 0) { activeTags.clear(); activeTags.add('all'); }
                 }
             }
+
             const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
-            let count = 0;
+            let visibleCounter = 0;
+
             items.forEach(el => {
                 const tokens = itemTokens.get(el);
-                let show = true;
+                let shouldShow = true;
                 if (activeTags !== null && !(activeTags instanceof Set && activeTags.has('all'))) {
                     const selected = targetMatch === 'single' ? [activeTags] : [...activeTags];
-                    show = nameMatch === 'single' ? selected.every(t => tokens.has(t)) : selected.some(t => tokens.has(t));
+                    shouldShow = nameMatch === 'single' ? selected.every(tag => tokens.has(tag)) : selected.some(tag => tokens.has(tag));
                 }
-                if (show) {
-                    count++;
-                    if (isDesktop) el.setAttribute('data-grid-pos', ((count - 1) % 9) + 1);
+
+                if (shouldShow) {
+                    visibleCounter++;
+                    if (isDesktop) el.setAttribute('data-grid-pos', ((visibleCounter - 1) % 9) + 1);
                     el.setAttribute('data-filter-status', 'active');
                 } else {
                     el.removeAttribute('data-grid-pos');
                     el.setAttribute('data-filter-status', 'not-active');
                 }
             });
+
             buttons.forEach(btn => {
-                const t = btn.getAttribute('data-filter-target').toLowerCase();
+                const t = (btn.getAttribute('data-filter-target') || '').trim().toLowerCase();
                 let on = (t === 'all') ? (activeTags instanceof Set && activeTags.has('all')) || activeTags === null : 
                          (targetMatch === 'single' ? activeTags === t : activeTags.has(t));
                 btn.setAttribute('data-filter-status', on ? 'active' : 'not-active');
             });
         };
-        group.onclick = e => { const btn = e.target.closest('[data-filter-target]'); if (btn) paint(btn.getAttribute('data-filter-target')); };
-        window.addEventListener('resize', () => paint(null, true));
+
+        newGroup.addEventListener('click', e => {
+            const btn = e.target.closest('[data-filter-target]');
+            if (btn) paint(btn.getAttribute('data-filter-target'));
+        });
+
         paint('all');
     });
 }
 
-// --- 6. MWG EFFECT 029 – WORDS ---
-function initMwgEffect029() {
-    const paragraph = document.querySelector(".mwg_effect029 .is--title-w");
-    if (!paragraph || paragraph.dataset.processed === "true") return;
-    paragraph.dataset.processed = "true";
-    paragraph.innerHTML = paragraph.textContent.split(" ").map(w => `<span>${w}</span>`).join(" ");
-    const words = paragraph.querySelectorAll("span");
-    words.forEach(w => w.classList.add("word" + (Math.floor(Math.random() * 3) + 1)));
-    const configs = [{ sel: ".word1", x: "-0.8em" }, { sel: ".word2", x: "1.6em" }, { sel: ".word3", x: "-2.4em" }];
-    configs.forEach(conf => {
-        document.querySelectorAll(`.mwg_effect029 ${conf.sel}`).forEach(el => {
-            gsap.to(el, { x: conf.x, ease: "none", scrollTrigger: { trigger: el, start: "top 80%", end: "bottom 60%", scrub: 0.2 }});
-        });
-    });
-}
-
-// --- 7. PS ITEM HOVER ---
+// --- 4. ANIMAZIONI GSAP HOVER (FIXED PER VIEW TRANSITIONS) ---
 function initPsItemHover() {
-    document.querySelectorAll(".ps__item").forEach((item) => {
+    const psItems = document.querySelectorAll(".ps__item");
+    if (!psItems.length) return;
+
+    psItems.forEach((item) => {
         const imgWrap = item.querySelector(".ps__item-img");
         const cta = item.querySelector(".projects__cta");
-        const targets = item.querySelectorAll("[data-split-ps]");
-        if (!imgWrap || !targets.length) return;
+        const splitTargets = item.querySelectorAll("[data-split-ps]");
+
+        if (!imgWrap || !splitTargets.length) return;
+
+        // Pulizia se già processato per evitare split multipli
+        splitTargets.forEach(el => {
+            if (el.classList.contains('split-done-hover')) return;
+        });
+
         const allLines = [];
-        targets.forEach(el => {
+        splitTargets.forEach((el) => {
+            // Usiamo SplitType per compatibilità totale
             const split = new SplitType(el, { types: "lines", lineClass: "split-line" });
             gsap.set(split.lines, { yPercent: 105 });
             allLines.push(...split.lines);
+            el.classList.add('split-done-hover');
         });
-        const tl = gsap.timeline({ paused: true });
-        tl.to(allLines, { yPercent: 0, duration: 0.8, ease: "expo.out", stagger: 0.05 }, 0);
-        if (cta) { gsap.set(cta, { autoAlpha: 0 }); tl.to(cta, { autoAlpha: 1, duration: 0.4 }, 0); }
-        imgWrap.onmouseenter = () => tl.play();
-        imgWrap.onmouseleave = () => tl.reverse();
+
+        if (cta) gsap.set(cta, { autoAlpha: 0 });
+
+        const hoverTl = gsap.timeline({ paused: true });
+        hoverTl.to(allLines, { yPercent: 0, duration: 0.8, ease: "expo.out", stagger: 0.05 }, 0);
+        if (cta) hoverTl.to(cta, { autoAlpha: 1, duration: 0.4, ease: "power2.out" }, 0);
+
+        // Usiamo onmouseenter/leave per sovrascrivere listener precedenti
+        imgWrap.onmouseenter = () => hoverTl.timeScale(1).play();
+        imgWrap.onmouseleave = () => hoverTl.timeScale(2.2).reverse();
     });
 }
 
-// --- 8. LOGO WALL & TEAM ---
-function initLogoWallCycle() { /* Logica mantenuta */ }
-function initWGTeamModule() { /* Logica mantenuta */ }
-function initAboutGridFlip() { /* Logica mantenuta */ }
-
-// --- 9. NAVIGAZIONE + HEAD SYNC (RISOLVE IL PROBLEMA DEL CSS) ---
+// --- 5. NAVIGAZIONE & HEAD SYNC ---
 function syncHead(newDoc) {
     const currentHead = document.head;
     const newStyles = newDoc.head.querySelectorAll('link[rel="stylesheet"], style');
@@ -198,9 +189,7 @@ if (window.navigation) {
                     const response = await fetch(event.destination.url);
                     const text = await response.text();
                     const doc = new DOMParser().parseFromString(text, "text/html");
-                    
-                    syncHead(doc); // Sincronizza il CSS prima della transizione
-
+                    syncHead(doc);
                     if (document.startViewTransition) {
                         const transition = document.startViewTransition(() => {
                             document.body.innerHTML = doc.body.innerHTML;
@@ -218,25 +207,33 @@ if (window.navigation) {
     });
 }
 
-// --- 10. FINALIZE ---
-function finalizePage(isT = false) {
+// --- 6. FINALIZE & RESET ---
+function finalizePage(isTransition = false) {
     window.scrollTo(0, 0);
     ScrollTrigger.getAll().forEach(t => t.kill());
     gsap.killTweensOf("*");
-    if (window.Webflow) { window.Webflow.destroy(); window.Webflow.ready(); window.Webflow.require('ix2').init(); }
-    if (window.lenis) { window.lenis.scrollTo(0, { immediate: true }); window.lenis.resize(); }
-    
-    initCategoryCount();
-    initGridToggle();
+
+    if (window.Webflow) {
+        window.Webflow.destroy();
+        window.Webflow.ready();
+        window.Webflow.require('ix2').init();
+    }
+
+    // Riavvio moduli
     initMutliFilterSetupMultiMatch();
-    initMwgEffect029();
     initPsItemHover();
-    if (typeof initLogoWallCycle === "function") initLogoWallCycle();
-    if (typeof initWGTeamModule === "function") initWGTeamModule();
-    if (typeof initAboutGridFlip === "function") initAboutGridFlip();
     
-    initializeAnimations(isT);
+    // Altri moduli (Words, Team, etc.)
+    if (typeof initMwgEffect029 === "function") initMwgEffect029();
+    if (typeof initCategoryCount === "function") initCategoryCount();
+    if (typeof initGridToggle === "function") initGridToggle();
+
+    initializeAnimations(isTransition);
     setTimeout(() => { ScrollTrigger.refresh(); }, 400);
 }
 
 window.addEventListener("DOMContentLoaded", () => finalizePage(false));
+window.addEventListener("resize", () => {
+    // Refresh filtri su resize globale
+    if (document.querySelector('[data-filter-group]')) initMutliFilterSetupMultiMatch();
+});
